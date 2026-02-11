@@ -61,6 +61,7 @@ workflows:
     environment:
       groups:
         - docker_credentials
+        - server_credentials
     triggering:
       events:
         - push
@@ -87,3 +88,7 @@ workflows:
         script: |
           docker compose push backend
           docker push ghcr.io/alesluznar1976/ai-agent-backend:$CM_COMMIT
+      - name: Deploy to server
+        script: |
+          ssh -o StrictHostKeyChecking=no $SERVER_USER@$SERVER_HOST \
+            "cd $SERVER_APP_DIR && docker compose pull backend && docker compose up -d backend"
