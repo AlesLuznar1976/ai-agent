@@ -2,6 +2,7 @@
 services:
   # AI Agent Backend (FastAPI)
   backend:
+    image: ghcr.io/alesluznar1976/ai-agent-backend:latest
     build:
       context: ./backend
       dockerfile: Dockerfile
@@ -29,6 +30,13 @@ services:
       - ./data/logs:/app/logs
     depends_on:
       - ollama
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
     restart: unless-stopped
     networks:
       - ai-agent-network

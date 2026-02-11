@@ -53,3 +53,37 @@ workflows:
           flutter build apk --release
     artifacts:
       - flutter_app/build/app/outputs/flutter-apk/app-release.apk
+
+  backend-deploy:
+    name: Backend Docker Deploy
+    max_build_duration: 30
+    instance_type: linux_x2
+    environment:
+      groups:
+        - docker_credentials
+    triggering:
+      events:
+        - push
+      branch_patterns:
+        - pattern: main
+          include: true
+      change_patterns:
+        - pattern: "backend/**"
+          include: true
+        - pattern: "docker-compose.yml"
+          include: true
+    scripts:
+      - name: Login to GHCR
+        script: |
+          echo $DOCKER_PASSWORD | docker login ghcr.io -u $DOCKER_USERNAME --password-stdin
+      - name: Build Docker image
+        script: |
+          docker compose build backend
+      - name: Tag with commit SHA
+        script: |
+          docker tag ghcr.io/alesluznar1976/ai-agent-backend:latest \
+            ghcr.io/alesluznar1976/ai-agent-backend:$CM_COMMIT
+      - name: Push to GHCR
+        script: |
+          docker compose push backend
+          docker push ghcr.io/alesluznar1976/ai-agent-backend:$CM_COMMIT
