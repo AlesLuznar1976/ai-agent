@@ -1,24 +1,11 @@
-import 'package:flutter/foundation.dart' show kIsWeb;
-
 /// Konfiguracija aplikacije
 class AppConfig {
-  // API naslovi - auto-detect glede na kje teče app
-  // Če je web: isti host kot browser, port 8000
-  // Če je native: localhost:8000
-  static String get apiBaseUrl {
-    if (kIsWeb) {
-      // V brskalniku: uporabi isti host, port 8000
-      return 'http://192.168.0.66:8000/api';
-    }
-    return 'http://192.168.0.66:8000/api';
-  }
+  // API naslovi - LAN IP deluje iz vseh platform (web, Android, iOS, Windows)
+  static const String _serverHost = '192.168.0.66';
+  static const int _serverPort = 8000;
 
-  static String get wsBaseUrl {
-    if (kIsWeb) {
-      return 'ws://192.168.0.66:8000/ws';
-    }
-    return 'ws://192.168.0.66:8000/ws';
-  }
+  static String get apiBaseUrl => 'http://$_serverHost:$_serverPort/api';
+  static String get wsBaseUrl => 'ws://$_serverHost:$_serverPort/ws';
 
   // App info
   static const String appName = 'AI Agent';
