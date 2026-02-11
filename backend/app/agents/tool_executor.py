@@ -680,15 +680,19 @@ class ToolExecutor:
                     "datum": str(r.get("datum", ""))[:16],
                 })
 
-        # Grupiraj po nabiralnikih (prejemniki)
-        po_nabiralnikih = {}
+        # Grupiraj po nabiralnikih (prejemniki IN posiljatelj)
+        all_mailboxes = [
+            "ales", "info", "spela", "nabava", "tehnolog",
+            "martina", "oddaja", "anela", "cam", "matej", "prevzem", "skladisce"
+        ]
+        po_nabiralnikih = {mb: 0 for mb in all_mailboxes}
         for r in rows:
-            prejemniki = r.get("prejemniki", "") or ""
-            for p in prejemniki.split(","):
-                p = p.strip().lower()
-                if p and "@luznar.com" in p:
-                    mailbox = p.split("@")[0]
-                    po_nabiralnikih[mailbox] = po_nabiralnikih.get(mailbox, 0) + 1
+            combined = ((r.get("prejemniki", "") or "") + "," + (r.get("posiljatelj", "") or "")).lower()
+            for mb in all_mailboxes:
+                if f"{mb}@luznar.com" in combined:
+                    po_nabiralnikih[mb] += 1
+        # Odstrani nabiralnike brez emailov
+        po_nabiralnikih = {k: v for k, v in po_nabiralnikih.items() if v > 0}
 
         # Sestavi besedilni povzetek
         lines = [f"POVZETEK EMAILOV (zadnjih {days} dni):"]
