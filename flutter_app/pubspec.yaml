@@ -28,6 +28,9 @@ dependencies:
   # Notifications
   flutter_local_notifications: ^17.0.0
 
+  # Markdown rendering
+  flutter_markdown: ^0.7.4+3
+
   # Utils
   intl: ^0.19.0
 
@@ -39,9 +42,4 @@ dev_dependencies:
 flutter:
   uses-material-design: true
 
-  fonts:
-    - family: Roboto
-      fonts:
-        - asset: fonts/Roboto-Regular.ttf
-        - asset: fonts/Roboto-Bold.ttf
-          weight: 700
+  # Roboto is the default Material Design font, no custom assets needed

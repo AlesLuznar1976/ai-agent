@@ -1,0 +1,15 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(where:*)",
+      "Bash(pip install:*)",
+      "Bash(python convert_to_pdf.py:*)",
+      "Bash(findstr:*)",
+      "Bash(dir \"A:\\\\AI-AGENT\\\\docs\\\\plans\\\\*.pdf\")",
+      "Bash(dir \"A:\\\\AI-AGENT\\\\docs\\\\*.pdf\")",
+      "WebFetch(domain:www.asus.com)",
+      "WebFetch(domain:dlcdnets.asus.com)",
+      "WebFetch(domain:download.gigabyte.com)"
+    ]
+  }
+}
