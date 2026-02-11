@@ -161,33 +161,68 @@ Vrni JSON:
             povzetek=f"Email od {sender}: {subject[:50]}..."
         )
 
+    RESPONSE_TYPE_INSTRUCTIONS = {
+        "acknowledge": "Potrdi prejem emaila. Stranki sporoči da smo prejeli njihovo sporočilo in bomo odgovorili v najkrajšem času.",
+        "request_info": "Zaprosi za dodatne informacije. Stranki pojasni katere podatke potrebujemo (Gerber datoteke, BOM, količine, specifikacije).",
+        "quote": "Sporoči da pripravljamo ponudbo. Omeni predviden čas za pripravo ponudbe (2-3 delovne dni).",
+        "reject": "Vljudno zavrni povpraševanje. Pojasni razlog (npr. ni v naši domeni, kapacitete zasedene) in predlagaj alternativo.",
+        "general": "Napiši splošen profesionalen odgovor glede na vsebino emaila.",
+    }
+
     async def suggest_response(
         self,
         original_email: dict,
         response_type: str = "acknowledge"
     ) -> str:
         """
-        Predlaga odgovor na email.
+        Predlaga odgovor na email z bogatim kontekstom.
 
         Args:
-            original_email: Originalni email
-            response_type: Tip odgovora (acknowledge, request_info, quote, ...)
+            original_email: Originalni email (sender, subject, body, kategorija, izvleceni_podatki, additional_context)
+            response_type: Tip odgovora (acknowledge, request_info, quote, reject, general)
         """
+        kategorija = original_email.get("kategorija", "")
+        izvleceni = original_email.get("izvleceni_podatki", {})
+        additional_context = original_email.get("additional_context", "")
 
-        prompt = f"""Pripravi profesionalen poslovni odgovor na email.
+        # Kontekst iz izvlečenih podatkov
+        context_parts = []
+        if izvleceni.get("stranka"):
+            context_parts.append(f"Stranka: {izvleceni['stranka']}")
+        if izvleceni.get("kolicina"):
+            context_parts.append(f"Količina: {izvleceni['kolicina']}")
+        if izvleceni.get("po_stevilka"):
+            context_parts.append(f"PO: {izvleceni['po_stevilka']}")
+        if izvleceni.get("povzetek"):
+            context_parts.append(f"Povzetek: {izvleceni['povzetek']}")
+        izvleceni_str = "\n".join(context_parts) if context_parts else "Ni dodatnih podatkov"
 
-Original email:
-Od: {original_email.get('sender')}
-Zadeva: {original_email.get('subject')}
-Vsebina: {original_email.get('body', '')[:500]}
+        type_instruction = self.RESPONSE_TYPE_INSTRUCTIONS.get(
+            response_type, self.RESPONSE_TYPE_INSTRUCTIONS["general"]
+        )
 
-Tip odgovora: {response_type}
+        prompt = f"""Pripravi profesionalen poslovni odgovor na email za podjetje Luznar Electronics d.o.o. (PCB/SMT izdelava).
 
-Navodila:
-- Piši v slovenščini
+**Original email:**
+Od: {original_email.get('sender', '')}
+Zadeva: {original_email.get('subject', '')}
+Kategorija: {kategorija}
+Vsebina: {original_email.get('body', '')[:800]}
+
+**Izvlečeni podatki:**
+{izvleceni_str}
+
+**Tip odgovora:** {response_type}
+**Navodilo:** {type_instruction}
+
+{f'**Dodatni kontekst:** {additional_context}' if additional_context else ''}
+
+**Pravila:**
+- Piši v slovenščini (ali angleščini če je original v angleščini)
 - Bodi profesionalen in prijazen
-- Vključi pozdrav in podpis
-- Podpis: Luznar Electronics d.o.o.
+- Vključi "Spoštovani," na začetku
+- Podpis: "Lep pozdrav,\nLuznar Electronics d.o.o."
+- NE dodajaj placeholder teksta v oglatih oklepajih
 
 Vrni samo besedilo odgovora."""
 

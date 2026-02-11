@@ -453,6 +453,46 @@ READ_TOOLS = [
             }
         }
     },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_email_details",
+            "description": "Podrobnosti emaila po ID - celotna vsebina, kategorija, izvlečeni podatki, priloge.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "email_id": {
+                        "type": "integer",
+                        "description": "ID emaila"
+                    }
+                },
+                "required": ["email_id"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_related_emails",
+            "description": "Poišči povezane emaile - po projektu, pošiljatelju/domeni, ali email niti (RE:/FW: matching). Uporabno za pregled konteksta.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "email_id": {
+                        "type": "integer",
+                        "description": "ID izhodišnega emaila"
+                    },
+                    "mode": {
+                        "type": "string",
+                        "description": "Način iskanja povezanih emailov",
+                        "enum": ["project", "sender", "thread", "all"],
+                        "default": "all"
+                    }
+                },
+                "required": ["email_id"]
+            }
+        }
+    },
 ]
 
 
@@ -592,6 +632,88 @@ WRITE_TOOLS = [
                     }
                 },
                 "required": ["projekt_id", "doc_type"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "categorize_email",
+            "description": "Ponovna AI kategorizacija emaila. Uporabi ko želiš posodobiti kategorijo ali ko je zaupanje nizko. ZAHTEVA POTRDITEV.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "email_id": {
+                        "type": "integer",
+                        "description": "ID emaila za kategorizacijo"
+                    }
+                },
+                "required": ["email_id"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "draft_email_response",
+            "description": "Pripravi osnutek odgovora na email. Agent napiše profesionalen odgovor na podlagi vsebine in kategorije. ZAHTEVA POTRDITEV.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "email_id": {
+                        "type": "integer",
+                        "description": "ID emaila na katerega odgovarjamo"
+                    },
+                    "response_type": {
+                        "type": "string",
+                        "description": "Tip odgovora",
+                        "enum": ["acknowledge", "request_info", "quote", "reject", "general"],
+                        "default": "acknowledge"
+                    },
+                    "additional_context": {
+                        "type": "string",
+                        "description": "Dodatne informacije za vključitev v odgovor"
+                    }
+                },
+                "required": ["email_id"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "sync_emails",
+            "description": "Sproži sinhronizacijo emailov iz Outlook. Prenese nove emaile in jih kategorizira. ZAHTEVA POTRDITEV.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "top": {
+                        "type": "integer",
+                        "description": "Maksimalno število emailov za sinhronizacijo",
+                        "default": 50
+                    }
+                }
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "generate_rfq_summary",
+            "description": "Generiraj sumarni dokument (RFQ Summary PDF) za projekt iz povpraševanja. Zbere podatke iz emailov, prilog in BOM-a. ZAHTEVA POTRDITEV.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "projekt_id": {
+                        "type": "integer",
+                        "description": "ID projekta"
+                    },
+                    "email_id": {
+                        "type": "integer",
+                        "description": "ID povezanega emaila (opcijsko)"
+                    }
+                },
+                "required": ["projekt_id"]
             }
         }
     },

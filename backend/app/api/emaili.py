@@ -1,9 +1,9 @@
 from fastapi import APIRouter, Depends, HTTPException
+from fastapi.responses import FileResponse
 from typing import Optional
-from datetime import datetime
 from sqlalchemy.orm import Session
 import json
-import httpx
+import os
 
 from app.auth import get_current_user, require_permission
 from app.models import (
@@ -13,6 +13,7 @@ from app.models import (
 from app.config import get_settings
 from app.database import get_db
 from app.crud import emaili as crud_emaili
+from app.services.email_sync import sync_emails_from_outlook
 
 router = APIRouter()
 settings = get_settings()
@@ -99,6 +100,157 @@ async def get_email(
     return db_email_to_response(db_email)
 
 
+@router.get("/{email_id}/povezani")
+async def get_povezani_emaili(
+    email_id: int,
+    mode: str = "all",
+    current_user: TokenData = Depends(require_permission(Permission.EMAIL_VIEW)),
+    db: Session = Depends(get_db),
+):
+    """Vrne povezane emaile - po projektu, pošiljatelju ali niti."""
+
+    db_email = crud_emaili.get_email_by_id(db, email_id)
+    if not db_email:
+        raise HTTPException(status_code=404, detail="Email ne obstaja")
+
+    related = []
+    seen_ids = {email_id}
+
+    # Po projektu
+    if mode in ("project", "all") and db_email.projekt_id:
+        project_emails = crud_emaili.list_emaili(db, projekt_id=db_email.projekt_id)
+        for e in project_emails:
+            if e.id not in seen_ids:
+                seen_ids.add(e.id)
+                r = db_email_to_response(e)
+                r["relation"] = "project"
+                related.append(r)
+
+    # Po pošiljatelju/domeni
+    if mode in ("sender", "all"):
+        sender_addr = ""
+        if "<" in db_email.posiljatelj and ">" in db_email.posiljatelj:
+            sender_addr = db_email.posiljatelj.split("<")[1].split(">")[0]
+        if sender_addr and "@" in sender_addr:
+            domain = sender_addr.split("@")[1]
+            all_emails = crud_emaili.list_emaili(db)
+            for e in all_emails:
+                if e.id not in seen_ids and domain in (e.posiljatelj or ""):
+                    seen_ids.add(e.id)
+                    r = db_email_to_response(e)
+                    r["relation"] = "sender"
+                    related.append(r)
+
+    # Po niti (RE:/FW: matching)
+    if mode in ("thread", "all"):
+        import re
+        clean_subject = re.sub(r"^(RE:|FW:|Fwd:|Re:|Fw:)\s*", "", db_email.zadeva or "", flags=re.IGNORECASE).strip()
+        if clean_subject:
+            all_emails = crud_emaili.list_emaili(db)
+            for e in all_emails:
+                if e.id not in seen_ids:
+                    e_clean = re.sub(r"^(RE:|FW:|Fwd:|Re:|Fw:)\s*", "", e.zadeva or "", flags=re.IGNORECASE).strip()
+                    if e_clean and (e_clean in clean_subject or clean_subject in e_clean):
+                        seen_ids.add(e.id)
+                        r = db_email_to_response(e)
+                        r["relation"] = "thread"
+                        related.append(r)
+
+    return {"email_id": email_id, "related": related, "count": len(related)}
+
+
+@router.get("/{email_id}/attachments/{att_id}")
+async def download_attachment(
+    email_id: int,
+    att_id: str,
+    current_user: TokenData = Depends(require_permission(Permission.EMAIL_VIEW)),
+    db: Session = Depends(get_db),
+):
+    """Prenesi prilogo emaila - iz lokalne datoteke ali MS Graph fallback."""
+
+    db_email = crud_emaili.get_email_by_id(db, email_id)
+    if not db_email:
+        raise HTTPException(status_code=404, detail="Email ne obstaja")
+
+    priloge = []
+    if db_email.priloge:
+        try:
+            priloge = json.loads(db_email.priloge)
+        except (json.JSONDecodeError, TypeError):
+            priloge = []
+
+    # Poišči prilogo po ID ali indeksu
+    attachment = None
+    for p in priloge:
+        if isinstance(p, dict) and (p.get("id") == att_id or p.get("name") == att_id):
+            attachment = p
+            break
+
+    # Poskusi po indeksu
+    if not attachment:
+        try:
+            idx = int(att_id)
+            if 0 <= idx < len(priloge):
+                attachment = priloge[idx]
+        except (ValueError, IndexError):
+            pass
+
+    if not attachment:
+        raise HTTPException(status_code=404, detail="Priloga ne obstaja")
+
+    # Preveri lokalno datoteko
+    local_path = attachment.get("local_path")
+    if local_path and os.path.exists(local_path):
+        return FileResponse(
+            local_path,
+            filename=attachment.get("name", "attachment"),
+            media_type=attachment.get("contentType", "application/octet-stream"),
+        )
+
+    # MS Graph fallback
+    from app.services.email_sync import get_ms_graph_token
+    from app.services.attachment_processor import download_attachment as dl_att
+
+    token = await get_ms_graph_token()
+    if not token:
+        raise HTTPException(status_code=503, detail="MS Graph ni na voljo")
+
+    graph_att_id = attachment.get("id")
+    if not graph_att_id:
+        raise HTTPException(status_code=404, detail="Priloga nima Graph ID")
+
+    att_data = await dl_att(token, db_email.outlook_id, graph_att_id)
+    if not att_data:
+        raise HTTPException(status_code=404, detail="Prenos priloge ni uspel")
+
+    from fastapi.responses import Response
+    return Response(
+        content=att_data,
+        media_type=attachment.get("contentType", "application/octet-stream"),
+        headers={"Content-Disposition": f'attachment; filename="{attachment.get("name", "attachment")}"'},
+    )
+
+
+@router.post("/{email_id}/process-attachments")
+async def process_email_attachments(
+    email_id: int,
+    current_user: TokenData = Depends(require_permission(Permission.EMAIL_VIEW)),
+    db: Session = Depends(get_db),
+):
+    """Sproži obdelavo prilog za email."""
+
+    db_email = crud_emaili.get_email_by_id(db, email_id)
+    if not db_email:
+        raise HTTPException(status_code=404, detail="Email ne obstaja")
+
+    if not db_email.projekt_id:
+        raise HTTPException(status_code=400, detail="Email mora biti dodeljen projektu za obdelavo prilog")
+
+    from app.services.attachment_processor import process_email_attachments as proc_att
+    result = await proc_att(db, db_email)
+    return result
+
+
 @router.post("/{email_id}/dodeli")
 async def dodeli_projektu(
     email_id: int,
@@ -106,7 +258,7 @@ async def dodeli_projektu(
     current_user: TokenData = Depends(require_permission(Permission.PROJECT_EDIT)),
     db: Session = Depends(get_db),
 ):
-    """Dodeli email projektu"""
+    """Dodeli email projektu in sproži obdelavo prilog."""
 
     db_email = crud_emaili.get_email_by_id(db, email_id)
     if not db_email:
@@ -121,9 +273,19 @@ async def dodeli_projektu(
         status="Dodeljen",
     )
 
+    # Avtomatsko sproži obdelavo prilog
+    attachment_result = None
+    if db_email.priloge:
+        try:
+            from app.services.attachment_processor import process_email_attachments as proc_att
+            attachment_result = await proc_att(db, db_email)
+        except Exception as e:
+            attachment_result = {"error": str(e)}
+
     return {
         "message": f"Email dodeljen projektu {data.projekt_id}",
         "email": db_email_to_response(db_email),
+        "attachments": attachment_result,
     }
 
 
@@ -153,86 +315,8 @@ async def update_email(
 
 
 # ============================================================
-# MS Graph Email Sync
+# Sync endpoint - delegira na email_sync servis
 # ============================================================
-
-async def get_ms_graph_token() -> Optional[str]:
-    """Pridobi MS Graph access token"""
-    if not all([settings.ms_graph_client_id, settings.ms_graph_client_secret, settings.ms_graph_tenant_id]):
-        return None
-
-    url = f"https://login.microsoftonline.com/{settings.ms_graph_tenant_id}/oauth2/v2.0/token"
-    data = {
-        "client_id": settings.ms_graph_client_id,
-        "client_secret": settings.ms_graph_client_secret,
-        "scope": "https://graph.microsoft.com/.default",
-        "grant_type": "client_credentials",
-    }
-
-    async with httpx.AsyncClient() as client:
-        response = await client.post(url, data=data)
-        if response.status_code == 200:
-            return response.json().get("access_token")
-    return None
-
-
-async def fetch_emails_from_graph(token: str, top: int = 20) -> list[dict]:
-    """Pridobi zadnje emaile iz MS Graph"""
-    mailbox = settings.ms_graph_mailbox
-    url = f"https://graph.microsoft.com/v1.0/users/{mailbox}/messages"
-    headers = {"Authorization": f"Bearer {token}"}
-    params = {
-        "$top": top,
-        "$orderby": "receivedDateTime desc",
-        "$select": "id,subject,from,toRecipients,body,receivedDateTime,hasAttachments",
-    }
-
-    async with httpx.AsyncClient() as client:
-        response = await client.get(url, headers=headers, params=params)
-        if response.status_code == 200:
-            return response.json().get("value", [])
-    return []
-
-
-async def categorize_email_with_llm(zadeva: str, telo: str) -> dict:
-    """Kategoriziraj email z LLM (Ollama)"""
-    try:
-        prompt = f"""Analiziraj naslednji email in ga kategoriziraj.
-
-Zadeva: {zadeva}
-Telo (prvih 500 znakov): {telo[:500] if telo else 'Prazno'}
-
-Vrni SAMO eno od naslednjih kategorij:
-- RFQ (povpraševanje za ponudbo)
-- Naročilo (potrditev naročila)
-- Sprememba (sprememba specifikacij/datotek)
-- Dokumentacija (pošiljanje dokumentov)
-- Reklamacija (pritožba/reklamacija)
-- Splošno (drugo)
-
-Kategorija:"""
-
-        async with httpx.AsyncClient(timeout=30.0) as client:
-            response = await client.post(
-                f"{settings.ollama_url}/api/generate",
-                json={
-                    "model": settings.ollama_model,
-                    "prompt": prompt,
-                    "stream": False,
-                },
-            )
-            if response.status_code == 200:
-                result = response.json().get("response", "").strip()
-                # Izvleci kategorijo iz odgovora
-                kategorije = ["RFQ", "Naročilo", "Sprememba", "Dokumentacija", "Reklamacija", "Splošno"]
-                for kat in kategorije:
-                    if kat.lower() in result.lower():
-                        return {"kategorija": kat, "ai_response": result}
-    except Exception as e:
-        print(f"LLM categorizacija napaka: {e}")
-
-    return {"kategorija": "Splošno", "ai_response": None}
-
 
 @router.post("/sync")
 async def sync_emails(
@@ -240,62 +324,35 @@ async def sync_emails(
     db: Session = Depends(get_db),
 ):
     """Sinhroniziraj emaile iz Outlook preko MS Graph"""
+    return await sync_emails_from_outlook(db)
 
-    token = await get_ms_graph_token()
-    if not token:
-        return {
-            "message": "Email sinhronizacija ni na voljo - potrebna MS Graph konfiguracija",
-            "synced": 0,
-            "new_emails": [],
-        }
 
-    graph_emails = await fetch_emails_from_graph(token)
-    new_emails = []
+# ============================================================
+# Email Send endpoint
+# ============================================================
 
-    for msg in graph_emails:
-        outlook_id = msg.get("id", "")
+from pydantic import BaseModel
 
-        # Preskoči če že obstaja
-        existing = crud_emaili.get_email_by_outlook_id(db, outlook_id)
-        if existing:
-            continue
 
-        zadeva = msg.get("subject", "Brez zadeve")
-        from_data = msg.get("from", {}).get("emailAddress", {})
-        posiljatelj = f"{from_data.get('name', '')} <{from_data.get('address', '')}>"
-        prejemniki_list = msg.get("toRecipients", [])
-        prejemniki = ", ".join(
-            r.get("emailAddress", {}).get("address", "") for r in prejemniki_list
-        )
-        telo = msg.get("body", {}).get("content", "")
-        datum_str = msg.get("receivedDateTime", "")
+class EmailSendRequest(BaseModel):
+    to: str
+    subject: str
+    body: str
+    reply_to_message_id: Optional[str] = None
 
-        try:
-            datum = datetime.fromisoformat(datum_str.replace("Z", "+00:00"))
-        except (ValueError, TypeError):
-            datum = datetime.now()
 
-        # AI kategorizacija
-        ai_result = await categorize_email_with_llm(zadeva, telo)
-        kategorija = ai_result["kategorija"]
-
-        # Shrani v bazo
-        db_email = crud_emaili.create_email(
-            db,
-            outlook_id=outlook_id,
-            zadeva=zadeva,
-            posiljatelj=posiljatelj,
-            prejemniki=prejemniki,
-            telo=telo[:4000],  # Omejitev za NVARCHAR(MAX) performance
-            kategorija=kategorija,
-            datum=datum,
-            izvleceni_podatki={"ai_kategorija": kategorija, "ai_response": ai_result.get("ai_response")},
-        )
-
-        new_emails.append(db_email_to_response(db_email))
-
-    return {
-        "message": f"Sinhronizirano {len(new_emails)} novih emailov",
-        "synced": len(new_emails),
-        "new_emails": new_emails,
-    }
+@router.post("/send")
+async def send_email(
+    data: EmailSendRequest,
+    current_user: TokenData = Depends(require_permission(Permission.EMAIL_SEND)),
+    db: Session = Depends(get_db),
+):
+    """Pošlji email preko MS Graph."""
+    from app.services.email_send import send_email_via_graph
+    result = await send_email_via_graph(
+        to=data.to,
+        subject=data.subject,
+        body=data.body,
+        reply_to_message_id=data.reply_to_message_id,
+    )
+    return result

@@ -24,8 +24,15 @@ async def lifespan(app: FastAPI):
     else:
         print("WARNING: Database connection FAILED!")
 
+    # Zaženi email sync scheduler
+    from app.services.scheduler import get_scheduler
+    scheduler = get_scheduler()
+    await scheduler.start()
+
     yield
+
     # Shutdown
+    await scheduler.stop()
     print("Shutting down...")
 
 

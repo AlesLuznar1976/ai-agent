@@ -197,6 +197,8 @@ class ToolExecutor:
             "count_records": self._count_records,
             "get_emails": self._get_emails,
             "run_custom_query": self._run_custom_query,
+            "get_email_details": self._get_email_details,
+            "get_related_emails": self._get_related_emails,
         }
 
         handler = handlers.get(tool_name)
@@ -647,6 +649,98 @@ class ToolExecutor:
             "query": query
         }
 
+    def _get_email_details(self, args: dict) -> dict:
+        """Podrobnosti emaila po ID z parsanim JSON."""
+        email_id = args["email_id"]
+
+        rows = self._execute_select(
+            "SELECT * FROM ai_agent.Emaili WHERE id = ?", (email_id,)
+        )
+        if not rows:
+            return {"success": False, "error": f"Email {email_id} ne obstaja"}
+
+        email = rows[0]
+        # Parse JSON polja
+        for field in ("izvleceni_podatki", "priloge"):
+            if email.get(field):
+                try:
+                    email[field] = json.loads(email[field])
+                except (json.JSONDecodeError, TypeError):
+                    pass
+
+        return {"success": True, "data": email}
+
+    def _get_related_emails(self, args: dict) -> dict:
+        """Poišči povezane emaile na 3 načine."""
+        email_id = args["email_id"]
+        mode = args.get("mode", "all")
+
+        # Pridobi izhodišni email
+        rows = self._execute_select(
+            "SELECT * FROM ai_agent.Emaili WHERE id = ?", (email_id,)
+        )
+        if not rows:
+            return {"success": False, "error": f"Email {email_id} ne obstaja"}
+
+        email = rows[0]
+        related = []
+        seen_ids = {email_id}
+
+        # Po projektu
+        if mode in ("project", "all") and email.get("projekt_id"):
+            project_emails = self._execute_select(
+                """SELECT TOP 20 id, zadeva, posiljatelj, kategorija, status, datum, projekt_id
+                   FROM ai_agent.Emaili WHERE projekt_id = ? AND id != ?
+                   ORDER BY datum DESC""",
+                (email["projekt_id"], email_id)
+            )
+            for e in project_emails:
+                if e["id"] not in seen_ids:
+                    seen_ids.add(e["id"])
+                    e["relation"] = "project"
+                    related.append(e)
+
+        # Po pošiljatelju/domeni
+        if mode in ("sender", "all"):
+            sender = email.get("posiljatelj", "")
+            domain = ""
+            if "<" in sender and ">" in sender:
+                addr = sender.split("<")[1].split(">")[0]
+                if "@" in addr:
+                    domain = addr.split("@")[1]
+            if domain:
+                sender_emails = self._execute_select(
+                    """SELECT TOP 20 id, zadeva, posiljatelj, kategorija, status, datum, projekt_id
+                       FROM ai_agent.Emaili WHERE posiljatelj LIKE ? AND id != ?
+                       ORDER BY datum DESC""",
+                    (f"%{domain}%", email_id)
+                )
+                for e in sender_emails:
+                    if e["id"] not in seen_ids:
+                        seen_ids.add(e["id"])
+                        e["relation"] = "sender"
+                        related.append(e)
+
+        # Po email niti (RE:/FW: matching)
+        if mode in ("thread", "all"):
+            import re as regex
+            zadeva = email.get("zadeva", "")
+            clean_subject = regex.sub(r"^(RE:|FW:|Fwd:|Re:|Fw:)\s*", "", zadeva, flags=regex.IGNORECASE).strip()
+            if clean_subject and len(clean_subject) > 3:
+                thread_emails = self._execute_select(
+                    """SELECT TOP 20 id, zadeva, posiljatelj, kategorija, status, datum, projekt_id
+                       FROM ai_agent.Emaili WHERE zadeva LIKE ? AND id != ?
+                       ORDER BY datum DESC""",
+                    (f"%{clean_subject[:100]}%", email_id)
+                )
+                for e in thread_emails:
+                    if e["id"] not in seen_ids:
+                        seen_ids.add(e["id"])
+                        e["relation"] = "thread"
+                        related.append(e)
+
+        return {"success": True, "data": related, "count": len(related)}
+
     # ============================================================
     # WRITE TOOLS (priprava za potrditev)
     # ============================================================
@@ -660,6 +754,10 @@ class ToolExecutor:
             "create_work_order": f"Ustvari delovni nalog za projekt #{args.get('projekt_id', '?')}",
             "assign_email_to_project": f"Dodeli email #{args.get('email_id', '?')} projektu #{args.get('projekt_id', '?')}",
             "generate_document": f"Generiraj {args.get('doc_type', '?')} za projekt #{args.get('projekt_id', '?')}",
+            "categorize_email": f"Kategoriziraj email #{args.get('email_id', '?')} z AI",
+            "draft_email_response": f"Pripravi odgovor na email #{args.get('email_id', '?')} ({args.get('response_type', 'acknowledge')})",
+            "sync_emails": f"Sinhroniziraj emaile iz Outlook (top {args.get('top', 50)})",
+            "generate_rfq_summary": f"Generiraj RFQ Summary za projekt #{args.get('projekt_id', '?')}",
         }
 
         return {
@@ -683,6 +781,10 @@ class ToolExecutor:
             "create_work_order": self._exec_create_work_order,
             "assign_email_to_project": self._exec_assign_email,
             "generate_document": self._exec_generate_document,
+            "categorize_email": self._exec_categorize_email,
+            "draft_email_response": self._exec_draft_email_response,
+            "sync_emails": self._exec_sync_emails,
+            "generate_rfq_summary": self._exec_generate_rfq_summary,
         }
 
         handler = handlers.get(tool_name)
@@ -810,7 +912,7 @@ class ToolExecutor:
             conn.close()
 
     async def _exec_assign_email(self, args: dict, user_id: int) -> dict:
-        """Dodeli email projektu."""
+        """Dodeli email projektu in sproži obdelavo prilog."""
         conn = self._get_connection()
         try:
             cursor = conn.cursor()
@@ -819,12 +921,37 @@ class ToolExecutor:
                 (args["projekt_id"], args["email_id"])
             )
             conn.commit()
-            return {"success": True, "data": {"email_id": args["email_id"], "projekt_id": args["projekt_id"]}}
         except Exception as e:
             conn.rollback()
             return {"success": False, "error": str(e)}
         finally:
             conn.close()
+
+        # Avtomatsko obdelaj priloge
+        attachment_result = None
+        try:
+            from app.database import SessionLocal
+            from app.crud import emaili as crud_emaili
+            from app.services.attachment_processor import process_email_attachments
+
+            db = SessionLocal()
+            try:
+                db_email = crud_emaili.get_email_by_id(db, args["email_id"])
+                if db_email and db_email.priloge:
+                    attachment_result = await process_email_attachments(db, db_email)
+            finally:
+                db.close()
+        except Exception as e:
+            attachment_result = {"error": str(e)}
+
+        return {
+            "success": True,
+            "data": {
+                "email_id": args["email_id"],
+                "projekt_id": args["projekt_id"],
+                "attachments": attachment_result,
+            }
+        }
 
     async def _exec_generate_document(self, args: dict, user_id: int) -> dict:
         """Generiraj dokument - placeholder za pravo implementacijo."""
@@ -835,6 +962,149 @@ class ToolExecutor:
                 "status": "V pripravi"
             }
         }
+
+    async def _exec_categorize_email(self, args: dict, user_id: int) -> dict:
+        """Ponovna AI kategorizacija emaila."""
+        email_id = args["email_id"]
+
+        rows = self._execute_select(
+            "SELECT id, posiljatelj, zadeva, telo, priloge FROM ai_agent.Emaili WHERE id = ?",
+            (email_id,)
+        )
+        if not rows:
+            return {"success": False, "error": f"Email {email_id} ne obstaja"}
+
+        email = rows[0]
+
+        # Parse priloge za imena
+        attachment_names = []
+        if email.get("priloge"):
+            try:
+                priloge = json.loads(email["priloge"])
+                attachment_names = [p.get("name", "") for p in priloge if isinstance(p, dict)]
+            except (json.JSONDecodeError, TypeError):
+                pass
+
+        from app.agents.email_agent import get_email_agent
+        from app.utils.html_utils import strip_html_to_text
+
+        agent = get_email_agent()
+        body = strip_html_to_text(email.get("telo", "")) if email.get("telo") else ""
+
+        analysis = await agent.categorize_email(
+            sender=email.get("posiljatelj", ""),
+            subject=email.get("zadeva", ""),
+            body=body,
+            attachments=attachment_names,
+        )
+
+        # Posodobi v bazi
+        izvleceni = {
+            "kategorija": analysis.kategorija.value,
+            "zaupanje": analysis.zaupanje,
+            "povzetek": analysis.povzetek,
+            "predlagan_projekt_id": analysis.predlagan_projekt_id,
+            **analysis.izvleceni_podatki,
+        }
+
+        conn = self._get_connection()
+        try:
+            cursor = conn.cursor()
+            cursor.execute(
+                "UPDATE ai_agent.Emaili SET kategorija = ?, izvleceni_podatki = ? WHERE id = ?",
+                (analysis.kategorija.value, json.dumps(izvleceni, ensure_ascii=False), email_id)
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+        return {
+            "success": True,
+            "data": {
+                "email_id": email_id,
+                "kategorija": analysis.kategorija.value,
+                "zaupanje": analysis.zaupanje,
+                "povzetek": analysis.povzetek,
+                "izvleceni_podatki": analysis.izvleceni_podatki,
+            }
+        }
+
+    async def _exec_draft_email_response(self, args: dict, user_id: int) -> dict:
+        """Pripravi osnutek odgovora na email."""
+        email_id = args["email_id"]
+        response_type = args.get("response_type", "acknowledge")
+
+        rows = self._execute_select(
+            "SELECT * FROM ai_agent.Emaili WHERE id = ?", (email_id,)
+        )
+        if not rows:
+            return {"success": False, "error": f"Email {email_id} ne obstaja"}
+
+        email = rows[0]
+
+        # Parse izvlečene podatke za boljši kontekst
+        izvleceni = {}
+        if email.get("izvleceni_podatki"):
+            try:
+                izvleceni = json.loads(email["izvleceni_podatki"])
+            except (json.JSONDecodeError, TypeError):
+                pass
+
+        from app.agents.email_agent import get_email_agent
+        from app.utils.html_utils import strip_html_to_text
+
+        agent = get_email_agent()
+        body = strip_html_to_text(email.get("telo", "")) if email.get("telo") else ""
+
+        original = {
+            "sender": email.get("posiljatelj", ""),
+            "subject": email.get("zadeva", ""),
+            "body": body,
+            "kategorija": email.get("kategorija", ""),
+            "izvleceni_podatki": izvleceni,
+            "additional_context": args.get("additional_context", ""),
+        }
+
+        draft = await agent.suggest_response(original, response_type)
+
+        return {
+            "success": True,
+            "data": {
+                "email_id": email_id,
+                "response_type": response_type,
+                "draft": draft,
+                "to": email.get("posiljatelj", ""),
+                "subject": f"RE: {email.get('zadeva', '')}",
+            }
+        }
+
+    async def _exec_sync_emails(self, args: dict, user_id: int) -> dict:
+        """Sproži sinhronizacijo emailov iz Outlook."""
+        from app.services.email_sync import sync_emails_from_outlook
+        from app.database import SessionLocal
+
+        db = SessionLocal()
+        try:
+            result = await sync_emails_from_outlook(db, top=args.get("top", 50))
+            return {"success": True, "data": result}
+        finally:
+            db.close()
+
+    async def _exec_generate_rfq_summary(self, args: dict, user_id: int) -> dict:
+        """Generiraj RFQ Summary PDF za projekt."""
+        from app.services.rfq_summary import generate_rfq_summary
+        from app.database import SessionLocal
+
+        db = SessionLocal()
+        try:
+            result = await generate_rfq_summary(
+                db,
+                projekt_id=args["projekt_id"],
+                email_id=args.get("email_id"),
+            )
+            return {"success": True, "data": result}
+        finally:
+            db.close()
 
     # ============================================================
     # ESCALATION

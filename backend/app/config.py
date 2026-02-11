@@ -43,6 +43,10 @@ class Settings(BaseSettings):
     calcuquote_api_key: Optional[str] = None
     calcuquote_url: str = "https://api.calcuquote.com/v1"
 
+    # Email sync
+    email_sync_interval_minutes: int = 5
+    email_sync_enabled: bool = True
+
     # Šifriranje
     encryption_key: Optional[str] = None
 

@@ -1,7 +1,7 @@
 """CRUD operacije za Emaili tabelo"""
 
 from sqlalchemy.orm import Session
-from sqlalchemy import desc
+from sqlalchemy import desc, func
 from datetime import datetime
 from typing import Optional
 import json
@@ -12,6 +12,12 @@ from app.db_models.email import DBEmail
 def get_email_by_id(db: Session, email_id: int) -> Optional[DBEmail]:
     """Pridobi email po ID"""
     return db.query(DBEmail).filter(DBEmail.id == email_id).first()
+
+
+def get_latest_email_date(db: Session) -> Optional[datetime]:
+    """Vrni datum najnovejšega emaila za inkrementalno sinhronizacijo."""
+    result = db.query(func.max(DBEmail.datum)).scalar()
+    return result
 
 
 def get_email_by_outlook_id(db: Session, outlook_id: str) -> Optional[DBEmail]:
