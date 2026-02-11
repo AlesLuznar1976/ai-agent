@@ -1,0 +1,639 @@
+<!DOCTYPE html>
+<html lang="sl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Luznar AI Agent - System Monitor</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
+<style>
+  :root {
+    --bg-primary: #0f172a;
+    --bg-secondary: #1e293b;
+    --bg-card: #1e293b;
+    --bg-card-hover: #253349;
+    --border: #334155;
+    --text-primary: #f1f5f9;
+    --text-secondary: #94a3b8;
+    --text-muted: #64748b;
+    --accent-green: #22c55e;
+    --accent-red: #ef4444;
+    --accent-yellow: #eab308;
+    --accent-blue: #3b82f6;
+    --accent-purple: #a855f7;
+    --accent-cyan: #06b6d4;
+  }
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, monospace;
+    background: var(--bg-primary);
+    color: var(--text-primary);
+    min-height: 100vh;
+    padding: 1rem;
+  }
+  /* Header */
+  .header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 1rem 1.5rem;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    margin-bottom: 1rem;
+  }
+  .header h1 {
+    font-size: 1.3rem;
+    font-weight: 700;
+    background: linear-gradient(135deg, var(--accent-blue), var(--accent-purple));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+  }
+  .header-meta { text-align: right; }
+  .header-meta .updated { color: var(--text-secondary); font-size: 0.8rem; }
+  .header-meta .uptime { color: var(--text-muted); font-size: 0.75rem; }
+  .status-dot {
+    display: inline-block;
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    margin-right: 6px;
+    animation: pulse 2s infinite;
+  }
+  .status-dot.green { background: var(--accent-green); }
+  .status-dot.red { background: var(--accent-red); }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.5} }
+
+  /* Gauge row */
+  .gauge-row {
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    gap: 1rem;
+    margin-bottom: 1rem;
+  }
+  .gauge-card {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 1rem;
+    text-align: center;
+  }
+  .gauge-card canvas { max-width: 120px; max-height: 120px; margin: 0 auto; }
+  .gauge-label { font-size: 0.75rem; color: var(--text-secondary); margin-top: 0.5rem; }
+  .gauge-value { font-size: 1.4rem; font-weight: 700; margin-top: -0.3rem; }
+
+  /* Service cards */
+  .services-row {
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    gap: 1rem;
+    margin-bottom: 1rem;
+  }
+  .service-card {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 1rem;
+    transition: border-color 0.3s;
+  }
+  .service-card.online { border-left: 3px solid var(--accent-green); }
+  .service-card.offline { border-left: 3px solid var(--accent-red); }
+  .service-card.warning { border-left: 3px solid var(--accent-yellow); }
+  .service-name {
+    font-size: 0.8rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--text-secondary);
+    margin-bottom: 0.5rem;
+  }
+  .service-status {
+    font-size: 0.9rem;
+    font-weight: 700;
+  }
+  .service-status.green { color: var(--accent-green); }
+  .service-status.red { color: var(--accent-red); }
+  .service-status.yellow { color: var(--accent-yellow); }
+  .service-detail { font-size: 0.75rem; color: var(--text-muted); margin-top: 0.3rem; }
+
+  /* Grid layout */
+  .detail-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1rem;
+    margin-bottom: 1rem;
+  }
+  .detail-card {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 1.2rem;
+  }
+  .card-title {
+    font-size: 0.8rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--accent-blue);
+    margin-bottom: 0.8rem;
+    padding-bottom: 0.5rem;
+    border-bottom: 1px solid var(--border);
+  }
+  .info-row {
+    display: flex;
+    justify-content: space-between;
+    padding: 0.3rem 0;
+    font-size: 0.82rem;
+  }
+  .info-label { color: var(--text-secondary); }
+  .info-value { color: var(--text-primary); font-weight: 500; }
+
+  /* VRAM bar */
+  .bar-container {
+    width: 100%;
+    height: 8px;
+    background: var(--bg-primary);
+    border-radius: 4px;
+    margin-top: 0.5rem;
+    overflow: hidden;
+  }
+  .bar-fill {
+    height: 100%;
+    border-radius: 4px;
+    transition: width 0.5s ease;
+  }
+  .bar-fill.green { background: var(--accent-green); }
+  .bar-fill.yellow { background: var(--accent-yellow); }
+  .bar-fill.red { background: var(--accent-red); }
+
+  /* Model list */
+  .model-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0.4rem 0;
+    border-bottom: 1px solid var(--border);
+    font-size: 0.8rem;
+  }
+  .model-item:last-child { border-bottom: none; }
+  .model-name { color: var(--text-primary); font-weight: 500; }
+  .model-meta { color: var(--text-muted); font-size: 0.72rem; }
+  .model-loaded {
+    font-size: 0.65rem;
+    padding: 2px 6px;
+    border-radius: 4px;
+    background: rgba(34,197,94,0.15);
+    color: var(--accent-green);
+    font-weight: 600;
+  }
+
+  /* Process table */
+  .process-item {
+    display: flex;
+    justify-content: space-between;
+    padding: 0.3rem 0;
+    font-size: 0.78rem;
+    border-bottom: 1px solid var(--border);
+  }
+  .process-item:last-child { border-bottom: none; }
+
+  /* History chart */
+  .history-card {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 1.2rem;
+    margin-bottom: 1rem;
+  }
+  .history-card canvas { max-height: 200px; }
+
+  /* Responsive */
+  @media (max-width: 1024px) {
+    .gauge-row { grid-template-columns: repeat(3, 1fr); }
+    .services-row { grid-template-columns: repeat(3, 1fr); }
+    .detail-grid { grid-template-columns: 1fr; }
+  }
+  @media (max-width: 640px) {
+    .gauge-row { grid-template-columns: repeat(2, 1fr); }
+    .services-row { grid-template-columns: repeat(2, 1fr); }
+  }
+
+  .error-banner {
+    background: rgba(239,68,68,0.15);
+    border: 1px solid var(--accent-red);
+    border-radius: 8px;
+    padding: 0.8rem 1rem;
+    margin-bottom: 1rem;
+    color: var(--accent-red);
+    font-size: 0.85rem;
+    display: none;
+  }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1>LUZNAR AI Agent — System Monitor</h1>
+  <div class="header-meta">
+    <div class="updated"><span class="status-dot green" id="statusDot"></span>Updated: <span id="lastUpdate">—</span></div>
+    <div class="uptime">Uptime: <span id="uptime">—</span></div>
+  </div>
+</div>
+
+<div class="error-banner" id="errorBanner"></div>
+
+<!-- Gauge row -->
+<div class="gauge-row">
+  <div class="gauge-card">
+    <canvas id="gaugeCPU"></canvas>
+    <div class="gauge-value" id="valCPU">—</div>
+    <div class="gauge-label">CPU</div>
+  </div>
+  <div class="gauge-card">
+    <canvas id="gaugeRAM"></canvas>
+    <div class="gauge-value" id="valRAM">—</div>
+    <div class="gauge-label">RAM</div>
+  </div>
+  <div class="gauge-card">
+    <canvas id="gaugeDisk"></canvas>
+    <div class="gauge-value" id="valDisk">—</div>
+    <div class="gauge-label">Disk</div>
+  </div>
+  <div class="gauge-card">
+    <canvas id="gaugeGPU"></canvas>
+    <div class="gauge-value" id="valGPU">—</div>
+    <div class="gauge-label">GPU</div>
+  </div>
+  <div class="gauge-card">
+    <canvas id="gaugeVRAM"></canvas>
+    <div class="gauge-value" id="valVRAM">—</div>
+    <div class="gauge-label">VRAM</div>
+  </div>
+</div>
+
+<!-- Services -->
+<div class="services-row" id="servicesRow">
+  <div class="service-card" id="svcOllama">
+    <div class="service-name">Ollama</div>
+    <div class="service-status" id="svcOllamaStatus">—</div>
+    <div class="service-detail" id="svcOllamaDetail"></div>
+  </div>
+  <div class="service-card" id="svcDB">
+    <div class="service-name">Database</div>
+    <div class="service-status" id="svcDBStatus">—</div>
+    <div class="service-detail" id="svcDBDetail"></div>
+  </div>
+  <div class="service-card" id="svcGraph">
+    <div class="service-name">MS Graph</div>
+    <div class="service-status" id="svcGraphStatus">—</div>
+    <div class="service-detail" id="svcGraphDetail"></div>
+  </div>
+  <div class="service-card" id="svcScheduler">
+    <div class="service-name">Email Scheduler</div>
+    <div class="service-status" id="svcSchedulerStatus">—</div>
+    <div class="service-detail" id="svcSchedulerDetail"></div>
+  </div>
+  <div class="service-card" id="svcClaude">
+    <div class="service-name">Claude</div>
+    <div class="service-status" id="svcClaudeStatus">—</div>
+    <div class="service-detail" id="svcClaudeDetail"></div>
+  </div>
+</div>
+
+<!-- Detail grid -->
+<div class="detail-grid">
+  <!-- GPU details -->
+  <div class="detail-card">
+    <div class="card-title">GPU Details</div>
+    <div id="gpuDetails">
+      <div class="info-row"><span class="info-label">GPU</span><span class="info-value" id="gpuName">—</span></div>
+      <div class="info-row"><span class="info-label">Driver</span><span class="info-value" id="gpuDriver">—</span></div>
+      <div class="info-row"><span class="info-label">Temperature</span><span class="info-value" id="gpuTemp">—</span></div>
+      <div class="info-row"><span class="info-label">Fan</span><span class="info-value" id="gpuFan">—</span></div>
+      <div class="info-row"><span class="info-label">Power</span><span class="info-value" id="gpuPower">—</span></div>
+      <div class="info-row"><span class="info-label">VRAM</span><span class="info-value" id="gpuVRAM">—</span></div>
+      <div class="bar-container"><div class="bar-fill green" id="gpuVRAMBar" style="width:0%"></div></div>
+      <div style="margin-top: 0.8rem;">
+        <div class="card-title" style="border:none;padding:0;margin-bottom:0.4rem;">GPU Processes</div>
+        <div id="gpuProcesses"><span class="info-label" style="font-size:0.78rem;">No processes</span></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Ollama models -->
+  <div class="detail-card">
+    <div class="card-title">Ollama Models</div>
+    <div id="ollamaModels"><span class="info-label">Loading...</span></div>
+  </div>
+
+  <!-- System info -->
+  <div class="detail-card">
+    <div class="card-title">System</div>
+    <div id="systemInfo">
+      <div class="info-row"><span class="info-label">Hostname</span><span class="info-value" id="sysHostname">—</span></div>
+      <div class="info-row"><span class="info-label">Platform</span><span class="info-value" id="sysPlatform">—</span></div>
+      <div class="info-row"><span class="info-label">CPU Cores</span><span class="info-value" id="sysCores">—</span></div>
+      <div class="info-row"><span class="info-label">CPU Freq</span><span class="info-value" id="sysFreq">—</span></div>
+      <div class="info-row"><span class="info-label">Network Sent</span><span class="info-value" id="sysNetSent">—</span></div>
+      <div class="info-row"><span class="info-label">Network Recv</span><span class="info-value" id="sysNetRecv">—</span></div>
+      <div class="info-row"><span class="info-label">Connections</span><span class="info-value" id="sysConns">—</span></div>
+    </div>
+  </div>
+
+  <!-- Agent status -->
+  <div class="detail-card">
+    <div class="card-title">Agent Status</div>
+    <div id="agentInfo">
+      <div class="info-row"><span class="info-label">Orchestrator</span><span class="info-value" id="agentModel">—</span></div>
+      <div class="info-row"><span class="info-label">Tool Model</span><span class="info-value" id="agentToolModel">—</span></div>
+      <div class="info-row"><span class="info-label">Max Tool Rounds</span><span class="info-value" id="agentRounds">—</span></div>
+      <div class="info-row"><span class="info-label">Claude Model</span><span class="info-value" id="agentClaude">—</span></div>
+    </div>
+  </div>
+</div>
+
+<!-- History chart -->
+<div class="history-card">
+  <div class="card-title">CPU & RAM History (5 min)</div>
+  <canvas id="historyChart"></canvas>
+</div>
+
+<script>
+// ---- Chart.js defaults ----
+Chart.defaults.color = '#94a3b8';
+Chart.defaults.borderColor = '#334155';
+
+// ---- Gauge charts ----
+function createGauge(canvasId, color) {
+  const ctx = document.getElementById(canvasId).getContext('2d');
+  return new Chart(ctx, {
+    type: 'doughnut',
+    data: {
+      datasets: [{
+        data: [0, 100],
+        backgroundColor: [color, '#1e293b'],
+        borderWidth: 0,
+        circumference: 270,
+        rotation: 225,
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: true,
+      cutout: '78%',
+      plugins: { legend: { display: false }, tooltip: { enabled: false } },
+      animation: { duration: 500 },
+    }
+  });
+}
+
+const gauges = {
+  cpu:  createGauge('gaugeCPU',  '#3b82f6'),
+  ram:  createGauge('gaugeRAM',  '#a855f7'),
+  disk: createGauge('gaugeDisk', '#06b6d4'),
+  gpu:  createGauge('gaugeGPU',  '#22c55e'),
+  vram: createGauge('gaugeVRAM', '#eab308'),
+};
+
+function updateGauge(gauge, value, elementId) {
+  const v = value ?? 0;
+  gauge.data.datasets[0].data = [v, 100 - v];
+  gauge.update('none');
+  document.getElementById(elementId).textContent = v.toFixed(1) + '%';
+}
+
+// ---- History chart ----
+const MAX_HISTORY = 60;
+const historyLabels = [];
+const cpuHistory = [];
+const ramHistory = [];
+
+const historyCtx = document.getElementById('historyChart').getContext('2d');
+const historyChart = new Chart(historyCtx, {
+  type: 'line',
+  data: {
+    labels: historyLabels,
+    datasets: [
+      {
+        label: 'CPU %',
+        data: cpuHistory,
+        borderColor: '#3b82f6',
+        backgroundColor: 'rgba(59,130,246,0.1)',
+        fill: true,
+        tension: 0.3,
+        pointRadius: 0,
+        borderWidth: 2,
+      },
+      {
+        label: 'RAM %',
+        data: ramHistory,
+        borderColor: '#a855f7',
+        backgroundColor: 'rgba(168,85,247,0.1)',
+        fill: true,
+        tension: 0.3,
+        pointRadius: 0,
+        borderWidth: 2,
+      },
+    ],
+  },
+  options: {
+    responsive: true,
+    maintainAspectRatio: false,
+    interaction: { mode: 'index', intersect: false },
+    scales: {
+      x: { display: true, grid: { color: '#1e293b' }, ticks: { maxTicksLimit: 10, font: { size: 10 } } },
+      y: { min: 0, max: 100, grid: { color: '#1e293b' }, ticks: { callback: v => v + '%', font: { size: 10 } } },
+    },
+    plugins: {
+      legend: { position: 'top', labels: { usePointStyle: true, pointStyle: 'circle', padding: 16, font: { size: 11 } } },
+    },
+    animation: { duration: 300 },
+  },
+});
+
+// ---- Helper functions ----
+function formatBytes(b) {
+  if (b == null) return '—';
+  if (b < 1024) return b + ' B';
+  if (b < 1048576) return (b / 1024).toFixed(1) + ' KB';
+  if (b < 1073741824) return (b / 1048576).toFixed(1) + ' MB';
+  return (b / 1073741824).toFixed(2) + ' GB';
+}
+
+function formatUptime(sec) {
+  if (sec == null) return '—';
+  const d = Math.floor(sec / 86400);
+  const h = Math.floor((sec % 86400) / 3600);
+  const m = Math.floor((sec % 3600) / 60);
+  let s = '';
+  if (d > 0) s += d + 'd ';
+  if (h > 0) s += h + 'h ';
+  s += m + 'm';
+  return s;
+}
+
+function svcClass(status) {
+  if (!status) return '';
+  const s = status.toLowerCase();
+  if (s === 'online' || s === 'running') return 'online';
+  if (s === 'offline' || s === 'error' || s === 'auth_failed') return 'offline';
+  return 'warning';
+}
+
+function svcColor(status) {
+  if (!status) return '';
+  const s = status.toLowerCase();
+  if (s === 'online' || s === 'running') return 'green';
+  if (s === 'offline' || s === 'error' || s === 'auth_failed') return 'red';
+  return 'yellow';
+}
+
+function barColor(pct) {
+  if (pct > 85) return 'red';
+  if (pct > 65) return 'yellow';
+  return 'green';
+}
+
+// ---- Main update ----
+let failCount = 0;
+
+async function fetchStatus() {
+  try {
+    const resp = await fetch('/api/system/status');
+    if (!resp.ok) throw new Error('HTTP ' + resp.status);
+    const d = await resp.json();
+    failCount = 0;
+    document.getElementById('errorBanner').style.display = 'none';
+    document.getElementById('statusDot').className = 'status-dot green';
+    updateDashboard(d);
+  } catch (e) {
+    failCount++;
+    document.getElementById('statusDot').className = 'status-dot red';
+    if (failCount >= 3) {
+      const banner = document.getElementById('errorBanner');
+      banner.textContent = 'Connection lost — retrying... (' + e.message + ')';
+      banner.style.display = 'block';
+    }
+  }
+}
+
+function updateDashboard(d) {
+  // Header
+  document.getElementById('lastUpdate').textContent = new Date(d.timestamp).toLocaleTimeString();
+  document.getElementById('uptime').textContent = formatUptime(d.uptime_seconds);
+
+  const sys = d.system || {};
+  const gpu = d.gpu || {};
+  const svc = d.services || {};
+  const agent = d.agent || {};
+
+  // Gauges
+  updateGauge(gauges.cpu, sys.cpu?.percent, 'valCPU');
+  updateGauge(gauges.ram, sys.memory?.percent, 'valRAM');
+  updateGauge(gauges.disk, sys.disk?.percent, 'valDisk');
+  updateGauge(gauges.gpu, gpu.gpu_utilization_percent, 'valGPU');
+  updateGauge(gauges.vram, gpu.memory_percent, 'valVRAM');
+
+  // History
+  const now = new Date(d.timestamp).toLocaleTimeString();
+  historyLabels.push(now);
+  cpuHistory.push(sys.cpu?.percent ?? 0);
+  ramHistory.push(sys.memory?.percent ?? 0);
+  if (historyLabels.length > MAX_HISTORY) {
+    historyLabels.shift();
+    cpuHistory.shift();
+    ramHistory.shift();
+  }
+  historyChart.update('none');
+
+  // Services
+  const ollama = svc.ollama || {};
+  const db = svc.database || {};
+  const graph = svc.ms_graph || {};
+  const sched = svc.email_scheduler || {};
+  const claude = svc.anthropic || {};
+
+  updateService('svcOllama', ollama.status, ollama.response_time_ms != null ? ollama.response_time_ms + 'ms' : '');
+  updateService('svcDB', db.status, db.response_time_ms != null ? db.response_time_ms + 'ms | pool: ' + db.pool_checked_out + '/' + db.pool_size : '');
+  updateService('svcGraph', graph.status, graph.mailboxes ? graph.mailboxes.length + ' mailbox(es)' : '');
+  updateService('svcScheduler', sched.status, sched.interval_minutes ? 'Every ' + sched.interval_minutes + ' min' : '');
+  updateService('svcClaude', claude.configured ? 'configured' : 'not configured', claude.model || '');
+
+  // GPU details
+  if (gpu.available) {
+    document.getElementById('gpuName').textContent = gpu.name || '—';
+    document.getElementById('gpuDriver').textContent = gpu.driver_version || '—';
+    document.getElementById('gpuTemp').textContent = gpu.temperature_c != null ? gpu.temperature_c + '°C' : '—';
+    document.getElementById('gpuFan').textContent = gpu.fan_percent != null ? gpu.fan_percent + '%' : '—';
+    document.getElementById('gpuPower').textContent = (gpu.power_draw_w != null && gpu.power_limit_w != null)
+      ? gpu.power_draw_w + 'W / ' + gpu.power_limit_w + 'W'
+      : '—';
+    const vramText = (gpu.memory_used_mb != null && gpu.memory_total_mb != null)
+      ? (gpu.memory_used_mb / 1024).toFixed(1) + ' / ' + (gpu.memory_total_mb / 1024).toFixed(1) + ' GB'
+      : '—';
+    document.getElementById('gpuVRAM').textContent = vramText;
+    const vramPct = gpu.memory_percent || 0;
+    const bar = document.getElementById('gpuVRAMBar');
+    bar.style.width = vramPct + '%';
+    bar.className = 'bar-fill ' + barColor(vramPct);
+
+    // Processes
+    const procDiv = document.getElementById('gpuProcesses');
+    if (gpu.processes && gpu.processes.length > 0) {
+      procDiv.innerHTML = gpu.processes.map(p =>
+        '<div class="process-item"><span class="info-label">' + p.name + ' (PID ' + p.pid + ')</span><span class="info-value">' + p.memory_mb + ' MB</span></div>'
+      ).join('');
+    } else {
+      procDiv.innerHTML = '<span class="info-label" style="font-size:0.78rem;">No processes</span>';
+    }
+  } else {
+    document.getElementById('gpuName').textContent = 'Not available';
+  }
+
+  // Ollama models
+  const modelsDiv = document.getElementById('ollamaModels');
+  const loadedNames = new Set((ollama.models_loaded || []).map(m => m.name));
+  const available = ollama.models_available || [];
+  if (available.length > 0) {
+    modelsDiv.innerHTML = available.map(m => {
+      const loaded = loadedNames.has(m.name);
+      return '<div class="model-item"><div><span class="model-name">' + m.name + '</span><br>' +
+        '<span class="model-meta">' + m.size_gb + ' GB' + (m.quantization ? ' · ' + m.quantization : '') +
+        (m.parameter_size ? ' · ' + m.parameter_size : '') + '</span></div>' +
+        (loaded ? '<span class="model-loaded">LOADED</span>' : '') +
+        '</div>';
+    }).join('');
+  } else {
+    modelsDiv.innerHTML = '<span class="info-label">No models found</span>';
+  }
+
+  // System info
+  document.getElementById('sysHostname').textContent = sys.hostname || '—';
+  document.getElementById('sysPlatform').textContent = sys.platform || '—';
+  document.getElementById('sysCores').textContent = sys.cpu?.count || '—';
+  document.getElementById('sysFreq').textContent = sys.cpu?.freq_mhz ? sys.cpu.freq_mhz + ' MHz' : '—';
+  document.getElementById('sysNetSent').textContent = formatBytes(sys.network?.bytes_sent);
+  document.getElementById('sysNetRecv').textContent = formatBytes(sys.network?.bytes_recv);
+  document.getElementById('sysConns').textContent = sys.network?.connections_count ?? '—';
+
+  // Agent
+  document.getElementById('agentModel').textContent = agent.orchestrator_model || '—';
+  document.getElementById('agentToolModel').textContent = agent.tool_model || '—';
+  document.getElementById('agentRounds').textContent = agent.max_tool_rounds || '—';
+  document.getElementById('agentClaude').textContent = claude.model || '—';
+}
+
+function updateService(cardId, status, detail) {
+  const card = document.getElementById(cardId);
+  const cls = svcClass(status);
+  card.className = 'service-card' + (cls ? ' ' + cls : '');
+  const statusEl = document.getElementById(cardId + 'Status');
+  statusEl.textContent = status || '—';
+  statusEl.className = 'service-status ' + svcColor(status);
+  document.getElementById(cardId + 'Detail').textContent = detail || '';
+}
+
+// ---- Init ----
+fetchStatus();
+setInterval(fetchStatus, 5000);
+</script>
+</body>
+</html>

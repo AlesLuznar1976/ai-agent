@@ -315,6 +315,79 @@ async def update_email(
 
 
 # ============================================================
+# Re-kategorizacija vseh emailov
+# ============================================================
+
+@router.post("/recategorize-all")
+async def recategorize_all_emails(
+    current_user: TokenData = Depends(require_permission(Permission.EMAIL_VIEW)),
+    db: Session = Depends(get_db),
+):
+    """Re-kategoriziraj vse emaile z LLM (Ollama JSON mode)."""
+    from app.agents.email_agent import get_email_agent
+
+    email_agent = get_email_agent()
+    all_emails = crud_emaili.list_emaili(db)
+    updated = 0
+    errors = 0
+
+    for db_email in all_emails:
+        try:
+            # Pripravi attachment names iz prilog
+            attachment_names = []
+            if db_email.priloge:
+                try:
+                    priloge = json.loads(db_email.priloge)
+                    attachment_names = [p.get("name", "") for p in priloge if isinstance(p, dict)]
+                except (json.JSONDecodeError, TypeError):
+                    pass
+
+            analysis = await email_agent.categorize_email(
+                sender=db_email.posiljatelj or "",
+                subject=db_email.zadeva or "",
+                body=db_email.telo or "",
+                attachments=attachment_names,
+            )
+
+            # Ohrani obstoječ mailbox iz izvleceni_podatki
+            mailbox = None
+            if db_email.izvleceni_podatki:
+                try:
+                    old_izvl = json.loads(db_email.izvleceni_podatki)
+                    mailbox = old_izvl.get("mailbox")
+                except (json.JSONDecodeError, TypeError):
+                    pass
+
+            izvleceni = {
+                "kategorija": analysis.kategorija.value,
+                "zaupanje": analysis.zaupanje,
+                "povzetek": analysis.povzetek,
+                "predlagan_projekt_id": analysis.predlagan_projekt_id,
+                **analysis.izvleceni_podatki,
+            }
+            if mailbox:
+                izvleceni["mailbox"] = mailbox
+
+            crud_emaili.update_email(
+                db, db_email.id,
+                kategorija=analysis.kategorija.value,
+                izvleceni_podatki=izvleceni,
+            )
+            updated += 1
+
+        except Exception as e:
+            print(f"Re-categorize error for email {db_email.id}: {e}")
+            errors += 1
+
+    return {
+        "message": f"Re-kategoriziranih {updated} emailov, {errors} napak",
+        "updated": updated,
+        "errors": errors,
+        "total": len(all_emails),
+    }
+
+
+# ============================================================
 # Sync endpoint - delegira na email_sync servis
 # ============================================================
 
