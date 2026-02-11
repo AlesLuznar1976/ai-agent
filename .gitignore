@@ -19,3 +19,9 @@ flutter_app/build/
 .DS_Store
 Thumbs.db
 .claude/
+
+# Flutter build artifacts
+flutter_app/.dart_tool/
+flutter_app/.flutter-plugins*
+flutter_app/pubspec.lock
+flutter_app/build/

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../config/brand_theme.dart';
 import '../services/auth_service.dart';
 
 class LoginScreen extends StatefulWidget {
@@ -10,17 +11,35 @@ class LoginScreen extends StatefulWidget {
   State<LoginScreen> createState() => _LoginScreenState();
 }
 
-class _LoginScreenState extends State<LoginScreen> {
+class _LoginScreenState extends State<LoginScreen>
+    with SingleTickerProviderStateMixin {
   final _formKey = GlobalKey<FormState>();
   final _usernameController = TextEditingController();
   final _passwordController = TextEditingController();
   bool _obscurePassword = true;
   String? _errorMessage;
+  late AnimationController _fadeController;
+  late Animation<double> _fadeAnimation;
+
+  @override
+  void initState() {
+    super.initState();
+    _fadeController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 800),
+    );
+    _fadeAnimation = CurvedAnimation(
+      parent: _fadeController,
+      curve: Curves.easeOut,
+    );
+    _fadeController.forward();
+  }
 
   @override
   void dispose() {
     _usernameController.dispose();
     _passwordController.dispose();
+    _fadeController.dispose();
     super.dispose();
   }
 
@@ -49,172 +68,253 @@ class _LoginScreenState extends State<LoginScreen> {
     final authService = context.watch<AuthService>();
 
     return Scaffold(
-      body: Container(
-        decoration: const BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-            colors: [
-              Color(0xFF1A365D),
-              Color(0xFF2C5282),
-            ],
+      body: Stack(
+        children: [
+          // Background gradient
+          Container(
+            decoration: const BoxDecoration(
+              gradient: LuznarBrand.loginGradient,
+            ),
           ),
-        ),
-        child: SafeArea(
-          child: Center(
-            child: SingleChildScrollView(
-              padding: const EdgeInsets.all(24),
-              child: Card(
-                elevation: 8,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(16),
-                ),
-                child: Padding(
-                  padding: const EdgeInsets.all(32),
-                  child: Form(
-                    key: _formKey,
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        // Logo
-                        const Icon(
-                          Icons.smart_toy,
-                          size: 64,
-                          color: Color(0xFF1A365D),
-                        ),
-                        const SizedBox(height: 16),
 
-                        // Naslov
-                        const Text(
-                          'AI Agent',
-                          style: TextStyle(
-                            fontSize: 28,
-                            fontWeight: FontWeight.bold,
-                            color: Color(0xFF1A365D),
-                          ),
-                        ),
-                        const Text(
-                          'Luznar Electronics',
-                          style: TextStyle(
-                            fontSize: 14,
-                            color: Colors.grey,
-                          ),
-                        ),
-                        const SizedBox(height: 32),
+          // Diamond pattern overlay
+          Positioned.fill(
+            child: CustomPaint(
+              painter: DiamondPatternPainter(
+                color: Colors.white,
+                opacity: 0.03,
+              ),
+            ),
+          ),
 
-                        // Napaka
-                        if (_errorMessage != null) ...[
-                          Container(
-                            padding: const EdgeInsets.all(12),
-                            decoration: BoxDecoration(
-                              color: Colors.red.shade50,
-                              borderRadius: BorderRadius.circular(8),
-                              border: Border.all(color: Colors.red.shade200),
-                            ),
-                            child: Row(
+          // Content
+          SafeArea(
+            child: Center(
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.all(24),
+                child: FadeTransition(
+                  opacity: _fadeAnimation,
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      // Logo and branding
+                      const LuznarLogo(size: 72, withGlow: true),
+                      const SizedBox(height: 20),
+                      const Text(
+                        'LUZNAR',
+                        style: LuznarBrand.brandTitle,
+                      ),
+                      const SizedBox(height: 4),
+                      const Text(
+                        'ELECTRONICS',
+                        style: LuznarBrand.brandSubtitle,
+                      ),
+                      const SizedBox(height: 8),
+                      const GoldAccentLine(width: 48),
+                      const SizedBox(height: 40),
+
+                      // Login card
+                      Container(
+                        constraints: const BoxConstraints(maxWidth: 400),
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(LuznarBrand.radiusMedium),
+                          boxShadow: LuznarBrand.shadowLarge,
+                        ),
+                        child: Padding(
+                          padding: const EdgeInsets.all(32),
+                          child: Form(
+                            key: _formKey,
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              crossAxisAlignment: CrossAxisAlignment.stretch,
                               children: [
-                                Icon(Icons.error_outline, color: Colors.red.shade700),
-                                const SizedBox(width: 8),
-                                Expanded(
-                                  child: Text(
-                                    _errorMessage!,
-                                    style: TextStyle(color: Colors.red.shade700),
+                                // Title
+                                const Text(
+                                  'Prijava',
+                                  style: TextStyle(
+                                    fontSize: 22,
+                                    fontWeight: FontWeight.w600,
+                                    color: LuznarBrand.navy,
                                   ),
+                                  textAlign: TextAlign.center,
+                                ),
+                                const SizedBox(height: 4),
+                                Text(
+                                  'AI Agent ERP System',
+                                  style: TextStyle(
+                                    fontSize: 13,
+                                    color: LuznarBrand.textMuted,
+                                    letterSpacing: 0.3,
+                                  ),
+                                  textAlign: TextAlign.center,
+                                ),
+                                const SizedBox(height: 28),
+
+                                // Error message
+                                if (_errorMessage != null) ...[
+                                  Container(
+                                    padding: const EdgeInsets.all(12),
+                                    decoration: BoxDecoration(
+                                      color: LuznarBrand.error.withValues(alpha: 0.06),
+                                      borderRadius: BorderRadius.circular(LuznarBrand.radiusSmall),
+                                      border: Border.all(
+                                        color: LuznarBrand.error.withValues(alpha: 0.2),
+                                      ),
+                                    ),
+                                    child: Row(
+                                      children: [
+                                        Icon(Icons.error_outline,
+                                            color: LuznarBrand.error, size: 20),
+                                        const SizedBox(width: 10),
+                                        Expanded(
+                                          child: Text(
+                                            _errorMessage!,
+                                            style: const TextStyle(
+                                              color: LuznarBrand.error,
+                                              fontSize: 13,
+                                            ),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                  const SizedBox(height: 20),
+                                ],
+
+                                // Username field
+                                Text(
+                                  'UPORABNIŠKO IME',
+                                  style: LuznarBrand.label,
+                                ),
+                                const SizedBox(height: 6),
+                                TextFormField(
+                                  controller: _usernameController,
+                                  decoration: const InputDecoration(
+                                    hintText: 'Vnesite uporabniško ime',
+                                    prefixIcon: Icon(Icons.person_outline, size: 20),
+                                  ),
+                                  textInputAction: TextInputAction.next,
+                                  validator: (value) {
+                                    if (value == null || value.isEmpty) {
+                                      return 'Vnesite uporabniško ime';
+                                    }
+                                    return null;
+                                  },
+                                ),
+                                const SizedBox(height: 20),
+
+                                // Password field
+                                Text(
+                                  'GESLO',
+                                  style: LuznarBrand.label,
+                                ),
+                                const SizedBox(height: 6),
+                                TextFormField(
+                                  controller: _passwordController,
+                                  obscureText: _obscurePassword,
+                                  decoration: InputDecoration(
+                                    hintText: 'Vnesite geslo',
+                                    prefixIcon: const Icon(Icons.lock_outline, size: 20),
+                                    suffixIcon: IconButton(
+                                      icon: Icon(
+                                        _obscurePassword
+                                            ? Icons.visibility_off_outlined
+                                            : Icons.visibility_outlined,
+                                        size: 20,
+                                      ),
+                                      onPressed: () {
+                                        setState(() {
+                                          _obscurePassword = !_obscurePassword;
+                                        });
+                                      },
+                                    ),
+                                  ),
+                                  textInputAction: TextInputAction.done,
+                                  onFieldSubmitted: (_) => _login(),
+                                  validator: (value) {
+                                    if (value == null || value.isEmpty) {
+                                      return 'Vnesite geslo';
+                                    }
+                                    return null;
+                                  },
+                                ),
+                                const SizedBox(height: 28),
+
+                                // Login button
+                                SizedBox(
+                                  height: 48,
+                                  child: ElevatedButton(
+                                    onPressed: authService.isLoading ? null : _login,
+                                    style: ElevatedButton.styleFrom(
+                                      backgroundColor: LuznarBrand.navy,
+                                      foregroundColor: Colors.white,
+                                      disabledBackgroundColor: LuznarBrand.navyLight,
+                                      shape: RoundedRectangleBorder(
+                                        borderRadius: BorderRadius.circular(LuznarBrand.radiusSmall),
+                                      ),
+                                    ),
+                                    child: authService.isLoading
+                                        ? const SizedBox(
+                                            width: 22,
+                                            height: 22,
+                                            child: CircularProgressIndicator(
+                                              strokeWidth: 2,
+                                              color: LuznarBrand.gold,
+                                            ),
+                                          )
+                                        : const Text(
+                                            'Prijava',
+                                            style: TextStyle(
+                                              fontSize: 15,
+                                              fontWeight: FontWeight.w600,
+                                              letterSpacing: 0.5,
+                                            ),
+                                          ),
+                                  ),
+                                ),
+
+                                const SizedBox(height: 16),
+                                Text(
+                                  'Privzeto: admin / admin123',
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    color: LuznarBrand.textMuted,
+                                  ),
+                                  textAlign: TextAlign.center,
                                 ),
                               ],
                             ),
                           ),
-                          const SizedBox(height: 16),
-                        ],
-
-                        // Uporabniško ime
-                        TextFormField(
-                          controller: _usernameController,
-                          decoration: const InputDecoration(
-                            labelText: 'Uporabniško ime',
-                            prefixIcon: Icon(Icons.person_outline),
-                            border: OutlineInputBorder(),
-                          ),
-                          textInputAction: TextInputAction.next,
-                          validator: (value) {
-                            if (value == null || value.isEmpty) {
-                              return 'Vnesite uporabniško ime';
-                            }
-                            return null;
-                          },
                         ),
-                        const SizedBox(height: 16),
+                      ),
 
-                        // Geslo
-                        TextFormField(
-                          controller: _passwordController,
-                          obscureText: _obscurePassword,
-                          decoration: InputDecoration(
-                            labelText: 'Geslo',
-                            prefixIcon: const Icon(Icons.lock_outline),
-                            border: const OutlineInputBorder(),
-                            suffixIcon: IconButton(
-                              icon: Icon(
-                                _obscurePassword
-                                    ? Icons.visibility_off
-                                    : Icons.visibility,
-                              ),
-                              onPressed: () {
-                                setState(() {
-                                  _obscurePassword = !_obscurePassword;
-                                });
-                              },
-                            ),
-                          ),
-                          textInputAction: TextInputAction.done,
-                          onFieldSubmitted: (_) => _login(),
-                          validator: (value) {
-                            if (value == null || value.isEmpty) {
-                              return 'Vnesite geslo';
-                            }
-                            return null;
-                          },
-                        ),
-                        const SizedBox(height: 24),
+                      const SizedBox(height: 32),
 
-                        // Gumb za prijavo
-                        SizedBox(
-                          width: double.infinity,
-                          height: 48,
-                          child: ElevatedButton(
-                            onPressed: authService.isLoading ? null : _login,
-                            child: authService.isLoading
-                                ? const SizedBox(
-                                    width: 24,
-                                    height: 24,
-                                    child: CircularProgressIndicator(
-                                      strokeWidth: 2,
-                                      color: Colors.white,
-                                    ),
-                                  )
-                                : const Text(
-                                    'Prijava',
-                                    style: TextStyle(fontSize: 16),
-                                  ),
-                          ),
+                      // Footer
+                      Text(
+                        'Luznar Electronics d.o.o.',
+                        style: TextStyle(
+                          fontSize: 11,
+                          color: Colors.white.withValues(alpha: 0.4),
+                          letterSpacing: 0.5,
                         ),
-
-                        const SizedBox(height: 16),
-                        Text(
-                          'Privzeto: admin / admin123',
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: Colors.grey.shade600,
-                          ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        'Hrastje 52g, SI-4000 Kranj',
+                        style: TextStyle(
+                          fontSize: 10,
+                          color: Colors.white.withValues(alpha: 0.25),
                         ),
-                      ],
-                    ),
+                      ),
+                    ],
                   ),
                 ),
               ),
             ),
           ),
-        ),
+        ],
       ),
     );
   }

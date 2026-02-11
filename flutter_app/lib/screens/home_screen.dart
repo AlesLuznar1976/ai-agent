@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../config/brand_theme.dart';
 import '../services/auth_service.dart';
 import 'chat_screen.dart';
 import 'projects_screen.dart';
@@ -27,31 +28,81 @@ class _HomeScreenState extends State<HomeScreen> {
 
     return Scaffold(
       appBar: AppBar(
+        backgroundColor: LuznarBrand.navy,
         title: Row(
           children: [
-            const Icon(Icons.smart_toy, size: 28),
-            const SizedBox(width: 8),
-            const Text('AI Agent'),
+            const LuznarLogo(size: 28, color: LuznarBrand.gold),
+            const SizedBox(width: 10),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'LUZNAR',
+                  style: TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w700,
+                    color: Colors.white,
+                    letterSpacing: 1.2,
+                  ),
+                ),
+                Text(
+                  'AI Agent',
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w400,
+                    color: LuznarBrand.gold.withValues(alpha: 0.9),
+                    letterSpacing: 0.5,
+                  ),
+                ),
+              ],
+            ),
           ],
         ),
         actions: [
-          // Uporabnik info
+          // User info
           if (user != null)
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 8),
               child: Center(
-                child: Chip(
-                  avatar: const Icon(Icons.person, size: 18),
-                  label: Text(user.username),
-                  backgroundColor: Colors.white.withOpacity(0.2),
-                  labelStyle: const TextStyle(color: Colors.white),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(LuznarBrand.radiusXLarge),
+                    border: Border.all(
+                      color: Colors.white.withValues(alpha: 0.15),
+                    ),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        Icons.person_outline,
+                        size: 16,
+                        color: LuznarBrand.gold.withValues(alpha: 0.8),
+                      ),
+                      const SizedBox(width: 6),
+                      Text(
+                        user.username,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 13,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               ),
             ),
 
-          // Odjava
+          // Logout
           IconButton(
-            icon: const Icon(Icons.logout),
+            icon: Icon(
+              Icons.logout_rounded,
+              color: Colors.white.withValues(alpha: 0.7),
+              size: 20,
+            ),
             tooltip: 'Odjava',
             onPressed: () async {
               final confirm = await showDialog<bool>(
@@ -77,28 +128,39 @@ class _HomeScreenState extends State<HomeScreen> {
               }
             },
           ),
+          const SizedBox(width: 4),
         ],
       ),
       body: _screens[_selectedIndex],
-      bottomNavigationBar: NavigationBar(
-        selectedIndex: _selectedIndex,
-        onDestinationSelected: (index) {
-          setState(() {
-            _selectedIndex = index;
-          });
-        },
-        destinations: const [
-          NavigationDestination(
-            icon: Icon(Icons.chat_outlined),
-            selectedIcon: Icon(Icons.chat),
-            label: 'Chat',
+      bottomNavigationBar: Container(
+        decoration: BoxDecoration(
+          color: LuznarBrand.surfaceWhite,
+          border: Border(
+            top: BorderSide(
+              color: LuznarBrand.navy.withValues(alpha: 0.08),
+            ),
           ),
-          NavigationDestination(
-            icon: Icon(Icons.folder_outlined),
-            selectedIcon: Icon(Icons.folder),
-            label: 'Projekti',
-          ),
-        ],
+        ),
+        child: NavigationBar(
+          selectedIndex: _selectedIndex,
+          onDestinationSelected: (index) {
+            setState(() {
+              _selectedIndex = index;
+            });
+          },
+          destinations: const [
+            NavigationDestination(
+              icon: Icon(Icons.chat_outlined),
+              selectedIcon: Icon(Icons.chat),
+              label: 'Chat',
+            ),
+            NavigationDestination(
+              icon: Icon(Icons.folder_outlined),
+              selectedIcon: Icon(Icons.folder),
+              label: 'Projekti',
+            ),
+          ],
+        ),
       ),
     );
   }

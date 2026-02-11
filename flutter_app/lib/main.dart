@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import 'config/app_config.dart';
+import 'config/brand_theme.dart';
 import 'services/auth_service.dart';
 import 'services/api_service.dart';
 import 'screens/login_screen.dart';
@@ -26,25 +27,7 @@ class AIAgentApp extends StatelessWidget {
       child: MaterialApp(
         title: AppConfig.appName,
         debugShowCheckedModeBanner: false,
-        theme: ThemeData(
-          colorScheme: ColorScheme.fromSeed(
-            seedColor: const Color(0xFF1A365D),
-            brightness: Brightness.light,
-          ),
-          useMaterial3: true,
-          appBarTheme: const AppBarTheme(
-            backgroundColor: Color(0xFF1A365D),
-            foregroundColor: Colors.white,
-            elevation: 0,
-          ),
-          elevatedButtonTheme: ElevatedButtonThemeData(
-            style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFF1A365D),
-              foregroundColor: Colors.white,
-              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-            ),
-          ),
-        ),
+        theme: LuznarBrand.theme,
         home: const AuthWrapper(),
       ),
     );
@@ -82,15 +65,31 @@ class _AuthWrapperState extends State<AuthWrapper> {
   @override
   Widget build(BuildContext context) {
     if (_isChecking) {
-      return const Scaffold(
-        body: Center(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              CircularProgressIndicator(),
-              SizedBox(height: 16),
-              Text('Preverjam sejo...'),
-            ],
+      return Scaffold(
+        body: Container(
+          decoration: const BoxDecoration(
+            gradient: LuznarBrand.loginGradient,
+          ),
+          child: const Center(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                LuznarLogo(size: 56, withGlow: true),
+                SizedBox(height: 24),
+                CircularProgressIndicator(
+                  color: LuznarBrand.gold,
+                  strokeWidth: 2,
+                ),
+                SizedBox(height: 16),
+                Text(
+                  'Preverjam sejo...',
+                  style: TextStyle(
+                    color: Colors.white70,
+                    fontSize: 13,
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
       );

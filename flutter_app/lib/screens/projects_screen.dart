@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:intl/intl.dart';
 
+import '../config/brand_theme.dart';
 import '../services/api_service.dart';
 import '../models/projekt.dart';
 
@@ -62,136 +63,173 @@ class _ProjectsScreenState extends State<ProjectsScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      children: [
-        // Filtri
-        Container(
-          height: 50,
-          padding: const EdgeInsets.symmetric(horizontal: 8),
-          child: ListView.builder(
-            scrollDirection: Axis.horizontal,
-            itemCount: _faze.length,
-            itemBuilder: (context, index) {
-              final faza = _faze[index];
-              final isSelected = (_selectedFaza ?? 'Vse') == faza;
+    return Container(
+      color: LuznarBrand.surface,
+      child: Column(
+        children: [
+          // Filters
+          Container(
+            height: 52,
+            padding: const EdgeInsets.symmetric(horizontal: 12),
+            color: LuznarBrand.surfaceWhite,
+            child: ListView.builder(
+              scrollDirection: Axis.horizontal,
+              itemCount: _faze.length,
+              itemBuilder: (context, index) {
+                final faza = _faze[index];
+                final isSelected = (_selectedFaza ?? 'Vse') == faza;
 
-              return Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
-                child: FilterChip(
-                  label: Text(faza),
-                  selected: isSelected,
-                  onSelected: (selected) {
-                    setState(() {
-                      _selectedFaza = selected ? faza : null;
-                    });
-                    _loadProjekti();
-                  },
-                ),
-              );
-            },
-          ),
-        ),
-
-        const Divider(height: 1),
-
-        // Seznam projektov
-        Expanded(
-          child: _isLoading
-              ? const Center(child: CircularProgressIndicator())
-              : _error != null
-                  ? Center(
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Icon(Icons.error_outline,
-                              size: 48, color: Colors.red.shade300),
-                          const SizedBox(height: 16),
-                          Text(_error!),
-                          const SizedBox(height: 16),
-                          ElevatedButton(
-                            onPressed: _loadProjekti,
-                            child: const Text('Poskusi znova'),
-                          ),
-                        ],
+                return Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 3, vertical: 8),
+                  child: FilterChip(
+                    label: Text(
+                      faza,
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: isSelected ? FontWeight.w600 : FontWeight.w400,
+                        color: isSelected ? LuznarBrand.navy : LuznarBrand.textSecondary,
                       ),
-                    )
-                  : _projekti.isEmpty
-                      ? Center(
-                          child: Column(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Icon(Icons.folder_off,
-                                  size: 48, color: Colors.grey.shade400),
-                              const SizedBox(height: 16),
-                              Text(
-                                'Ni projektov',
-                                style: TextStyle(color: Colors.grey.shade600),
-                              ),
-                            ],
-                          ),
-                        )
-                      : RefreshIndicator(
-                          onRefresh: _loadProjekti,
-                          child: ListView.builder(
-                            padding: const EdgeInsets.all(8),
-                            itemCount: _projekti.length,
-                            itemBuilder: (context, index) {
-                              return _buildProjektCard(_projekti[index]);
-                            },
-                          ),
+                    ),
+                    selected: isSelected,
+                    selectedColor: LuznarBrand.navy.withValues(alpha: 0.1),
+                    backgroundColor: LuznarBrand.surfaceWhite,
+                    checkmarkColor: LuznarBrand.navy,
+                    side: BorderSide(
+                      color: isSelected
+                          ? LuznarBrand.navy.withValues(alpha: 0.3)
+                          : LuznarBrand.navy.withValues(alpha: 0.1),
+                    ),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(LuznarBrand.radiusXLarge),
+                    ),
+                    onSelected: (selected) {
+                      setState(() {
+                        _selectedFaza = selected ? faza : null;
+                      });
+                      _loadProjekti();
+                    },
+                  ),
+                );
+              },
+            ),
+          ),
+
+          Divider(height: 1, color: LuznarBrand.navy.withValues(alpha: 0.06)),
+
+          // Project list
+          Expanded(
+            child: _isLoading
+                ? Center(
+                    child: CircularProgressIndicator(
+                      color: LuznarBrand.gold,
+                      strokeWidth: 2,
+                    ),
+                  )
+                : _error != null
+                    ? Center(
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(Icons.error_outline,
+                                size: 48, color: LuznarBrand.error.withValues(alpha: 0.5)),
+                            const SizedBox(height: 16),
+                            Text(
+                              _error!,
+                              style: TextStyle(color: LuznarBrand.textSecondary),
+                            ),
+                            const SizedBox(height: 16),
+                            OutlinedButton.icon(
+                              onPressed: _loadProjekti,
+                              icon: const Icon(Icons.refresh, size: 18),
+                              label: const Text('Poskusi znova'),
+                            ),
+                          ],
                         ),
-        ),
-      ],
+                      )
+                    : _projekti.isEmpty
+                        ? Center(
+                            child: Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Icon(Icons.folder_off_outlined,
+                                    size: 48, color: LuznarBrand.textMuted),
+                                const SizedBox(height: 16),
+                                Text(
+                                  'Ni projektov',
+                                  style: TextStyle(color: LuznarBrand.textSecondary),
+                                ),
+                              ],
+                            ),
+                          )
+                        : RefreshIndicator(
+                            color: LuznarBrand.gold,
+                            onRefresh: _loadProjekti,
+                            child: ListView.builder(
+                              padding: const EdgeInsets.all(12),
+                              itemCount: _projekti.length,
+                              itemBuilder: (context, index) {
+                                return _buildProjektCard(_projekti[index]);
+                              },
+                            ),
+                          ),
+          ),
+        ],
+      ),
     );
   }
 
   Widget _buildProjektCard(Projekt projekt) {
-    final fazaColor = Color(int.parse(projekt.fazaColor.replaceFirst('#', '0xFF')));
+    Color fazaColor;
+    try {
+      fazaColor = Color(int.parse(projekt.fazaColor.replaceFirst('#', '0xFF')));
+    } catch (_) {
+      fazaColor = LuznarBrand.navy;
+    }
 
     return Card(
-      margin: const EdgeInsets.only(bottom: 8),
+      margin: const EdgeInsets.only(bottom: 10),
       child: InkWell(
         onTap: () {
-          // TODO: Odpri projekt detajl
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(content: Text('Odpiranje ${projekt.stevilkaProjekta}...')),
           );
         },
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(LuznarBrand.radiusMedium),
         child: Padding(
           padding: const EdgeInsets.all(16),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Glava
+              // Header
               Row(
                 children: [
-                  // Številka projekta
+                  // Project number
                   Text(
                     projekt.stevilkaProjekta,
                     style: const TextStyle(
-                      fontWeight: FontWeight.bold,
-                      fontSize: 16,
+                      fontWeight: FontWeight.w700,
+                      fontSize: 15,
+                      color: LuznarBrand.navy,
                     ),
                   ),
                   const Spacer(),
-                  // Faza
+                  // Phase badge
                   Container(
                     padding: const EdgeInsets.symmetric(
                       horizontal: 12,
                       vertical: 4,
                     ),
                     decoration: BoxDecoration(
-                      color: fazaColor.withOpacity(0.1),
-                      borderRadius: BorderRadius.circular(16),
-                      border: Border.all(color: fazaColor.withOpacity(0.5)),
+                      color: fazaColor.withValues(alpha: 0.08),
+                      borderRadius: BorderRadius.circular(LuznarBrand.radiusXLarge),
                     ),
                     child: Text(
                       projekt.faza,
                       style: TextStyle(
                         color: fazaColor,
-                        fontWeight: FontWeight.w500,
-                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                        fontSize: 11,
+                        letterSpacing: 0.3,
                       ),
                     ),
                   ),
@@ -199,38 +237,46 @@ class _ProjectsScreenState extends State<ProjectsScreen> {
               ),
               const SizedBox(height: 8),
 
-              // Naziv
+              // Name
               Text(
                 projekt.naziv,
-                style: const TextStyle(fontSize: 15),
+                style: const TextStyle(
+                  fontSize: 14,
+                  color: LuznarBrand.textPrimary,
+                ),
               ),
-              const SizedBox(height: 8),
+              const SizedBox(height: 10),
 
-              // Info
+              // Info row
               Row(
                 children: [
-                  Icon(Icons.calendar_today,
-                      size: 14, color: Colors.grey.shade600),
+                  Icon(Icons.calendar_today_outlined,
+                      size: 13, color: LuznarBrand.textMuted),
                   const SizedBox(width: 4),
                   Text(
                     DateFormat('dd.MM.yyyy').format(projekt.datumRfq),
-                    style: TextStyle(
+                    style: const TextStyle(
                       fontSize: 12,
-                      color: Colors.grey.shade600,
+                      color: LuznarBrand.textSecondary,
                     ),
                   ),
                   const SizedBox(width: 16),
-                  Icon(Icons.circle,
-                      size: 8,
+                  Container(
+                    width: 7,
+                    height: 7,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
                       color: projekt.status == 'Aktiven'
-                          ? Colors.green
-                          : Colors.grey),
+                          ? LuznarBrand.success
+                          : LuznarBrand.textMuted,
+                    ),
+                  ),
                   const SizedBox(width: 4),
                   Text(
                     projekt.status,
-                    style: TextStyle(
+                    style: const TextStyle(
                       fontSize: 12,
-                      color: Colors.grey.shade600,
+                      color: LuznarBrand.textSecondary,
                     ),
                   ),
                 ],

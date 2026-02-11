@@ -1,12 +1,24 @@
+import 'package:flutter/foundation.dart' show kIsWeb;
+
 /// Konfiguracija aplikacije
 class AppConfig {
-  // API naslovi
-  static const String apiBaseUrl = 'http://localhost:8000/api';
-  static const String wsBaseUrl = 'ws://localhost:8000/ws';
+  // API naslovi - auto-detect glede na kje teče app
+  // Če je web: isti host kot browser, port 8000
+  // Če je native: localhost:8000
+  static String get apiBaseUrl {
+    if (kIsWeb) {
+      // V brskalniku: uporabi isti host, port 8000
+      return 'http://192.168.0.66:8000/api';
+    }
+    return 'http://192.168.0.66:8000/api';
+  }
 
-  // Za produkcijo
-  // static const String apiBaseUrl = 'https://ai-agent.luznar.local/api';
-  // static const String wsBaseUrl = 'wss://ai-agent.luznar.local/ws';
+  static String get wsBaseUrl {
+    if (kIsWeb) {
+      return 'ws://192.168.0.66:8000/ws';
+    }
+    return 'ws://192.168.0.66:8000/ws';
+  }
 
   // App info
   static const String appName = 'AI Agent';

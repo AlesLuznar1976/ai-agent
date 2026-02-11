@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:provider/provider.dart';
 import 'package:intl/intl.dart';
 
+import '../config/brand_theme.dart';
 import '../services/api_service.dart';
 import '../models/chat.dart';
 
@@ -12,7 +14,7 @@ class ChatScreen extends StatefulWidget {
   State<ChatScreen> createState() => _ChatScreenState();
 }
 
-class _ChatScreenState extends State<ChatScreen> {
+class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
   final _messageController = TextEditingController();
   final _scrollController = ScrollController();
   final List<ChatMessage> _messages = [];
@@ -81,136 +83,186 @@ class _ChatScreenState extends State<ChatScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      children: [
-        // Sporočila
-        Expanded(
-          child: _messages.isEmpty
-              ? _buildWelcome()
-              : ListView.builder(
-                  controller: _scrollController,
-                  padding: const EdgeInsets.all(16),
-                  itemCount: _messages.length + (_isLoading ? 1 : 0),
-                  itemBuilder: (context, index) {
-                    if (_isLoading && index == _messages.length) {
-                      return _buildTypingIndicator();
-                    }
-                    return _buildMessageBubble(_messages[index]);
-                  },
-                ),
-        ),
-
-        // Predlagani ukazi
-        if (_suggestedCommands.isNotEmpty)
-          Container(
-            height: 48,
-            padding: const EdgeInsets.symmetric(horizontal: 8),
-            child: ListView.builder(
-              scrollDirection: Axis.horizontal,
-              itemCount: _suggestedCommands.length,
-              itemBuilder: (context, index) {
-                return Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
-                  child: ActionChip(
-                    label: Text(_suggestedCommands[index]),
-                    onPressed: () => _sendMessage(_suggestedCommands[index]),
+    return Container(
+      color: LuznarBrand.surface,
+      child: Column(
+        children: [
+          // Messages
+          Expanded(
+            child: _messages.isEmpty
+                ? _buildWelcome()
+                : ListView.builder(
+                    controller: _scrollController,
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                    itemCount: _messages.length + (_isLoading ? 1 : 0),
+                    itemBuilder: (context, index) {
+                      if (_isLoading && index == _messages.length) {
+                        return _buildTypingIndicator();
+                      }
+                      return _buildMessageBubble(_messages[index]);
+                    },
                   ),
-                );
-              },
-            ),
           ),
 
-        // Vnos sporočila
-        Container(
-          padding: const EdgeInsets.all(8),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            boxShadow: [
-              BoxShadow(
-                color: Colors.grey.withOpacity(0.2),
-                blurRadius: 4,
-                offset: const Offset(0, -2),
-              ),
-            ],
-          ),
-          child: SafeArea(
-            child: Row(
-              children: [
-                Expanded(
-                  child: TextField(
-                    controller: _messageController,
-                    decoration: InputDecoration(
-                      hintText: 'Vnesite sporočilo...',
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(24),
-                        borderSide: BorderSide.none,
+          // Suggested commands
+          if (_suggestedCommands.isNotEmpty)
+            Container(
+              height: 44,
+              padding: const EdgeInsets.symmetric(horizontal: 12),
+              child: ListView.builder(
+                scrollDirection: Axis.horizontal,
+                itemCount: _suggestedCommands.length,
+                itemBuilder: (context, index) {
+                  return Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 3, vertical: 6),
+                    child: ActionChip(
+                      label: Text(
+                        _suggestedCommands[index],
+                        style: const TextStyle(
+                          fontSize: 12,
+                          color: LuznarBrand.navy,
+                          fontWeight: FontWeight.w500,
+                        ),
                       ),
-                      filled: true,
-                      fillColor: Colors.grey.shade100,
-                      contentPadding: const EdgeInsets.symmetric(
-                        horizontal: 16,
-                        vertical: 8,
+                      backgroundColor: LuznarBrand.surfaceWhite,
+                      side: BorderSide(color: LuznarBrand.navy.withValues(alpha: 0.15)),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(LuznarBrand.radiusXLarge),
+                      ),
+                      onPressed: () => _sendMessage(_suggestedCommands[index]),
+                    ),
+                  );
+                },
+              ),
+            ),
+
+          // Message input
+          Container(
+            padding: const EdgeInsets.fromLTRB(12, 8, 12, 12),
+            decoration: BoxDecoration(
+              color: LuznarBrand.surfaceWhite,
+              border: Border(
+                top: BorderSide(
+                  color: LuznarBrand.navy.withValues(alpha: 0.06),
+                ),
+              ),
+            ),
+            child: SafeArea(
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Container(
+                      decoration: BoxDecoration(
+                        color: LuznarBrand.surface,
+                        borderRadius: BorderRadius.circular(LuznarBrand.radiusXLarge),
+                        border: Border.all(
+                          color: LuznarBrand.navy.withValues(alpha: 0.1),
+                        ),
+                      ),
+                      child: TextField(
+                        controller: _messageController,
+                        decoration: InputDecoration(
+                          hintText: 'Vprašajte karkoli o ERP...',
+                          hintStyle: TextStyle(
+                            color: LuznarBrand.textMuted,
+                            fontSize: 14,
+                          ),
+                          border: InputBorder.none,
+                          enabledBorder: InputBorder.none,
+                          focusedBorder: InputBorder.none,
+                          filled: false,
+                          contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 18,
+                            vertical: 12,
+                          ),
+                        ),
+                        style: const TextStyle(fontSize: 14),
+                        textInputAction: TextInputAction.send,
+                        onSubmitted: (_) => _sendMessage(),
                       ),
                     ),
-                    textInputAction: TextInputAction.send,
-                    onSubmitted: (_) => _sendMessage(),
                   ),
-                ),
-                const SizedBox(width: 8),
-                CircleAvatar(
-                  backgroundColor: const Color(0xFF1A365D),
-                  child: IconButton(
-                    icon: const Icon(Icons.send, color: Colors.white),
-                    onPressed: _isLoading ? null : () => _sendMessage(),
+                  const SizedBox(width: 8),
+                  Material(
+                    color: LuznarBrand.navy,
+                    borderRadius: BorderRadius.circular(LuznarBrand.radiusXLarge),
+                    child: InkWell(
+                      borderRadius: BorderRadius.circular(LuznarBrand.radiusXLarge),
+                      onTap: _isLoading ? null : () => _sendMessage(),
+                      child: Container(
+                        width: 42,
+                        height: 42,
+                        alignment: Alignment.center,
+                        child: Icon(
+                          Icons.send_rounded,
+                          color: _isLoading
+                              ? Colors.white.withValues(alpha: 0.4)
+                              : Colors.white,
+                          size: 20,
+                        ),
+                      ),
+                    ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
           ),
-        ),
-      ],
+        ],
+      ),
     );
   }
 
   Widget _buildWelcome() {
     return Center(
-      child: Padding(
+      child: SingleChildScrollView(
         padding: const EdgeInsets.all(32),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(
-              Icons.smart_toy,
-              size: 80,
-              color: Colors.grey.shade400,
-            ),
-            const SizedBox(height: 16),
-            Text(
-              'Dobrodošli v AI Agent',
-              style: TextStyle(
-                fontSize: 24,
-                fontWeight: FontWeight.bold,
-                color: Colors.grey.shade700,
+            // Logo
+            Container(
+              width: 80,
+              height: 80,
+              decoration: BoxDecoration(
+                color: LuznarBrand.navy.withValues(alpha: 0.06),
+                borderRadius: BorderRadius.circular(20),
+              ),
+              child: const Center(
+                child: LuznarLogo(
+                  size: 48,
+                  color: LuznarBrand.navy,
+                ),
               ),
             ),
-            const SizedBox(height: 8),
+            const SizedBox(height: 20),
+            const Text(
+              'Dobrodošli',
+              style: TextStyle(
+                fontSize: 24,
+                fontWeight: FontWeight.w600,
+                color: LuznarBrand.navy,
+              ),
+            ),
+            const SizedBox(height: 6),
             Text(
               'Kako vam lahko pomagam danes?',
               style: TextStyle(
-                fontSize: 16,
-                color: Colors.grey.shade600,
+                fontSize: 15,
+                color: LuznarBrand.textSecondary,
               ),
             ),
+            const SizedBox(height: 8),
+            const GoldAccentLine(width: 32),
             const SizedBox(height: 32),
             Wrap(
-              spacing: 8,
-              runSpacing: 8,
+              spacing: 10,
+              runSpacing: 10,
               alignment: WrapAlignment.center,
               children: [
-                _buildQuickAction('Preveri emaile', Icons.email),
-                _buildQuickAction('Seznam projektov', Icons.folder),
-                _buildQuickAction('Nov projekt', Icons.add_circle),
-                _buildQuickAction('Pomoč', Icons.help),
+                _buildQuickAction('Preveri emaile', Icons.email_outlined),
+                _buildQuickAction('Seznam projektov', Icons.folder_outlined),
+                _buildQuickAction('Nov projekt', Icons.add_circle_outline),
+                _buildQuickAction('Pomoč', Icons.help_outline),
               ],
             ),
           ],
@@ -220,13 +272,36 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   Widget _buildQuickAction(String label, IconData icon) {
-    return ElevatedButton.icon(
-      onPressed: () => _sendMessage(label),
-      icon: Icon(icon, size: 18),
-      label: Text(label),
-      style: ElevatedButton.styleFrom(
-        backgroundColor: Colors.grey.shade100,
-        foregroundColor: Colors.grey.shade800,
+    return Material(
+      color: LuznarBrand.surfaceWhite,
+      borderRadius: BorderRadius.circular(LuznarBrand.radiusMedium),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(LuznarBrand.radiusMedium),
+        onTap: () => _sendMessage(label),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(LuznarBrand.radiusMedium),
+            border: Border.all(
+              color: LuznarBrand.navy.withValues(alpha: 0.1),
+            ),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(icon, size: 18, color: LuznarBrand.gold),
+              const SizedBox(width: 8),
+              Text(
+                label,
+                style: const TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w500,
+                  color: LuznarBrand.navy,
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -236,54 +311,144 @@ class _ChatScreenState extends State<ChatScreen> {
     final isSystem = message.isSystem;
 
     return Padding(
-      padding: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.only(bottom: 16),
       child: Row(
         mainAxisAlignment:
             isUser ? MainAxisAlignment.end : MainAxisAlignment.start,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           if (!isUser) ...[
-            CircleAvatar(
-              radius: 16,
-              backgroundColor:
-                  isSystem ? Colors.orange.shade100 : const Color(0xFF1A365D),
-              child: Icon(
-                isSystem ? Icons.info : Icons.smart_toy,
-                size: 18,
-                color: isSystem ? Colors.orange.shade800 : Colors.white,
+            Container(
+              width: 32,
+              height: 32,
+              decoration: BoxDecoration(
+                color: isSystem
+                    ? LuznarBrand.warning.withValues(alpha: 0.1)
+                    : LuznarBrand.navy,
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Center(
+                child: isSystem
+                    ? Icon(Icons.info_outline, size: 16,
+                        color: LuznarBrand.warning)
+                    : const LuznarLogo(size: 18, color: LuznarBrand.gold),
               ),
             ),
-            const SizedBox(width: 8),
+            const SizedBox(width: 10),
           ],
           Flexible(
             child: Container(
-              padding: const EdgeInsets.all(12),
+              padding: const EdgeInsets.all(14),
               decoration: BoxDecoration(
                 color: isUser
-                    ? const Color(0xFF1A365D)
+                    ? LuznarBrand.navy
                     : isSystem
-                        ? Colors.orange.shade50
-                        : Colors.grey.shade100,
-                borderRadius: BorderRadius.circular(16).copyWith(
-                  bottomLeft: isUser ? null : const Radius.circular(4),
-                  bottomRight: isUser ? const Radius.circular(4) : null,
+                        ? LuznarBrand.warning.withValues(alpha: 0.06)
+                        : LuznarBrand.surfaceWhite,
+                borderRadius: BorderRadius.circular(LuznarBrand.radiusMedium).copyWith(
+                  topLeft: isUser ? null : const Radius.circular(4),
+                  topRight: isUser ? const Radius.circular(4) : null,
                 ),
+                border: isUser
+                    ? null
+                    : Border.all(
+                        color: isSystem
+                            ? LuznarBrand.warning.withValues(alpha: 0.15)
+                            : LuznarBrand.navy.withValues(alpha: 0.06),
+                      ),
+                boxShadow: isUser ? null : LuznarBrand.shadowSmall,
               ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
-                    message.content,
-                    style: TextStyle(
-                      color: isUser ? Colors.white : Colors.black87,
+                  if (isUser)
+                    Text(
+                      message.content,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 14,
+                        height: 1.4,
+                      ),
+                    )
+                  else
+                    MarkdownBody(
+                      data: message.content,
+                      selectable: true,
+                      styleSheet: MarkdownStyleSheet(
+                        p: const TextStyle(
+                          color: LuznarBrand.textPrimary,
+                          fontSize: 14,
+                          height: 1.5,
+                        ),
+                        tableHead: const TextStyle(
+                          fontWeight: FontWeight.w600,
+                          fontSize: 13,
+                          color: LuznarBrand.navy,
+                        ),
+                        tableBody: const TextStyle(
+                          fontSize: 13,
+                          color: LuznarBrand.textPrimary,
+                        ),
+                        tableBorder: TableBorder.all(
+                          color: LuznarBrand.navy.withValues(alpha: 0.12),
+                          width: 0.5,
+                        ),
+                        tableCellsPadding: const EdgeInsets.symmetric(
+                          horizontal: 10,
+                          vertical: 5,
+                        ),
+                        code: TextStyle(
+                          backgroundColor: LuznarBrand.surface,
+                          fontSize: 13,
+                          fontFamily: 'monospace',
+                          color: LuznarBrand.navy,
+                        ),
+                        codeblockDecoration: BoxDecoration(
+                          color: LuznarBrand.surface,
+                          borderRadius: BorderRadius.circular(LuznarBrand.radiusSmall),
+                          border: Border.all(
+                            color: LuznarBrand.navy.withValues(alpha: 0.08),
+                          ),
+                        ),
+                        strong: const TextStyle(
+                          fontWeight: FontWeight.w600,
+                          color: LuznarBrand.navy,
+                        ),
+                        h1: const TextStyle(
+                          fontSize: 20,
+                          fontWeight: FontWeight.w700,
+                          color: LuznarBrand.navy,
+                        ),
+                        h2: const TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.w600,
+                          color: LuznarBrand.navy,
+                        ),
+                        h3: const TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w600,
+                          color: LuznarBrand.navy,
+                        ),
+                      ),
                     ),
-                  ),
-                  const SizedBox(height: 4),
+                  // Pending actions buttons
+                  if (message.needsConfirmation && message.actions != null)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 10),
+                      child: Column(
+                        children: message.actions!.map((action) {
+                          return _buildActionButtons(action);
+                        }).toList(),
+                      ),
+                    ),
+                  const SizedBox(height: 6),
                   Text(
                     DateFormat('HH:mm').format(message.timestamp),
                     style: TextStyle(
                       fontSize: 10,
-                      color: isUser ? Colors.white70 : Colors.grey,
+                      color: isUser
+                          ? Colors.white.withValues(alpha: 0.5)
+                          : LuznarBrand.textMuted,
                     ),
                   ),
                 ],
@@ -291,10 +456,17 @@ class _ChatScreenState extends State<ChatScreen> {
             ),
           ),
           if (isUser) ...[
-            const SizedBox(width: 8),
-            const CircleAvatar(
-              radius: 16,
-              child: Icon(Icons.person, size: 18),
+            const SizedBox(width: 10),
+            Container(
+              width: 32,
+              height: 32,
+              decoration: BoxDecoration(
+                color: LuznarBrand.gold.withValues(alpha: 0.15),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: const Center(
+                child: Icon(Icons.person, size: 18, color: LuznarBrand.gold),
+              ),
             ),
           ],
         ],
@@ -302,30 +474,99 @@ class _ChatScreenState extends State<ChatScreen> {
     );
   }
 
-  Widget _buildTypingIndicator() {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 12),
+  Widget _buildActionButtons(Map<String, dynamic> action) {
+    final status = action['status'] ?? 'Čaka';
+    final description = action['description'] ?? action['tool_name'] ?? '';
+    final actionId = action['id'] ?? '';
+
+    if (status != 'Čaka') {
+      final isConfirmed = status == 'Potrjeno';
+      return Container(
+        margin: const EdgeInsets.only(bottom: 6),
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+        decoration: BoxDecoration(
+          color: isConfirmed
+              ? LuznarBrand.success.withValues(alpha: 0.06)
+              : LuznarBrand.error.withValues(alpha: 0.06),
+          borderRadius: BorderRadius.circular(LuznarBrand.radiusSmall),
+          border: Border.all(
+            color: isConfirmed
+                ? LuznarBrand.success.withValues(alpha: 0.2)
+                : LuznarBrand.error.withValues(alpha: 0.2),
+          ),
+        ),
+        child: Row(
+          children: [
+            Icon(
+              isConfirmed ? Icons.check_circle_outline : Icons.cancel_outlined,
+              size: 16,
+              color: isConfirmed ? LuznarBrand.success : LuznarBrand.error,
+            ),
+            const SizedBox(width: 6),
+            Flexible(
+              child: Text(
+                '$description - $status',
+                style: TextStyle(
+                  fontSize: 12,
+                  color: isConfirmed ? LuznarBrand.success : LuznarBrand.error,
+                ),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 6),
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        color: LuznarBrand.warning.withValues(alpha: 0.04),
+        borderRadius: BorderRadius.circular(LuznarBrand.radiusSmall),
+        border: Border.all(
+          color: LuznarBrand.warning.withValues(alpha: 0.2),
+        ),
+      ),
       child: Row(
         children: [
-          const CircleAvatar(
-            radius: 16,
-            backgroundColor: Color(0xFF1A365D),
-            child: Icon(Icons.smart_toy, size: 18, color: Colors.white),
-          ),
+          Icon(Icons.pending_actions, size: 18, color: LuznarBrand.gold),
           const SizedBox(width: 8),
-          Container(
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: Colors.grey.shade100,
-              borderRadius: BorderRadius.circular(16),
+          Expanded(
+            child: Text(
+              description,
+              style: const TextStyle(
+                fontSize: 13,
+                color: LuznarBrand.textPrimary,
+              ),
             ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                _buildDot(0),
-                _buildDot(1),
-                _buildDot(2),
-              ],
+          ),
+          const SizedBox(width: 4),
+          SizedBox(
+            height: 30,
+            child: TextButton(
+              onPressed: () => _confirmAction(actionId),
+              style: TextButton.styleFrom(
+                foregroundColor: LuznarBrand.success,
+                padding: const EdgeInsets.symmetric(horizontal: 10),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(LuznarBrand.radiusSmall),
+                ),
+              ),
+              child: const Text('Potrdi', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
+            ),
+          ),
+          SizedBox(
+            height: 30,
+            child: TextButton(
+              onPressed: () => _rejectAction(actionId),
+              style: TextButton.styleFrom(
+                foregroundColor: LuznarBrand.error,
+                padding: const EdgeInsets.symmetric(horizontal: 10),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(LuznarBrand.radiusSmall),
+                ),
+              ),
+              child: const Text('Zavrni', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
             ),
           ),
         ],
@@ -333,17 +574,148 @@ class _ChatScreenState extends State<ChatScreen> {
     );
   }
 
-  Widget _buildDot(int index) {
-    return TweenAnimationBuilder<double>(
-      tween: Tween(begin: 0, end: 1),
-      duration: Duration(milliseconds: 600 + (index * 200)),
-      builder: (context, value, child) {
+  Future<void> _confirmAction(String actionId) async {
+    if (actionId.isEmpty) return;
+    try {
+      final apiService = context.read<ApiService>();
+      await apiService.confirmAction(actionId);
+      setState(() {
+        for (final msg in _messages) {
+          if (msg.actions != null) {
+            for (final action in msg.actions!) {
+              if (action['id'] == actionId) {
+                action['status'] = 'Potrjeno';
+              }
+            }
+          }
+        }
+      });
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Napaka: $e')),
+        );
+      }
+    }
+  }
+
+  Future<void> _rejectAction(String actionId) async {
+    if (actionId.isEmpty) return;
+    try {
+      final apiService = context.read<ApiService>();
+      await apiService.rejectAction(actionId);
+      setState(() {
+        for (final msg in _messages) {
+          if (msg.actions != null) {
+            for (final action in msg.actions!) {
+              if (action['id'] == actionId) {
+                action['status'] = 'Zavrnjeno';
+              }
+            }
+          }
+        }
+      });
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Napaka: $e')),
+        );
+      }
+    }
+  }
+
+  Widget _buildTypingIndicator() {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 16),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: 32,
+            height: 32,
+            decoration: BoxDecoration(
+              color: LuznarBrand.navy,
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: const Center(
+              child: LuznarLogo(size: 18, color: LuznarBrand.gold),
+            ),
+          ),
+          const SizedBox(width: 10),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+            decoration: BoxDecoration(
+              color: LuznarBrand.surfaceWhite,
+              borderRadius: BorderRadius.circular(LuznarBrand.radiusMedium).copyWith(
+                topLeft: const Radius.circular(4),
+              ),
+              border: Border.all(
+                color: LuznarBrand.navy.withValues(alpha: 0.06),
+              ),
+              boxShadow: LuznarBrand.shadowSmall,
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                _TypingDot(delay: 0),
+                _TypingDot(delay: 1),
+                _TypingDot(delay: 2),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _TypingDot extends StatefulWidget {
+  final int delay;
+  const _TypingDot({required this.delay});
+
+  @override
+  State<_TypingDot> createState() => _TypingDotState();
+}
+
+class _TypingDotState extends State<_TypingDot>
+    with SingleTickerProviderStateMixin {
+  late AnimationController _controller;
+  late Animation<double> _animation;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 600),
+    );
+    _animation = Tween<double>(begin: 0.3, end: 1.0).animate(
+      CurvedAnimation(parent: _controller, curve: Curves.easeInOut),
+    );
+    Future.delayed(Duration(milliseconds: widget.delay * 200), () {
+      if (mounted) {
+        _controller.repeat(reverse: true);
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: _animation,
+      builder: (context, child) {
         return Container(
           margin: const EdgeInsets.symmetric(horizontal: 2),
-          width: 8,
-          height: 8,
+          width: 7,
+          height: 7,
           decoration: BoxDecoration(
-            color: Colors.grey.shade400,
+            color: LuznarBrand.gold.withValues(alpha: _animation.value),
             shape: BoxShape.circle,
           ),
         );
