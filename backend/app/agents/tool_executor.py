@@ -196,6 +196,8 @@ class ToolExecutor:
             "get_production_status": self._get_production_status,
             "count_records": self._count_records,
             "get_emails": self._get_emails,
+            "summarize_emails": self._summarize_emails,
+            "daily_report": self._daily_report,
             "run_custom_query": self._run_custom_query,
             "get_email_details": self._get_email_details,
             "get_related_emails": self._get_related_emails,
@@ -622,6 +624,193 @@ class ToolExecutor:
             tuple([limit] + params)
         )
         return {"success": True, "data": rows, "count": len(rows)}
+
+    def _summarize_emails(self, args: dict) -> dict:
+        """Serversko generiran povzetek emailov - model le prikaže rezultat."""
+        from datetime import timedelta
+
+        days = self._safe_int(args.get("days"), 7)
+        date_from = (datetime.now() - timedelta(days=days)).strftime("%Y-%m-%d")
+
+        conditions = ["datum >= ?"]
+        params = [date_from]
+
+        if args.get("status") and not args.get("all_statuses"):
+            conditions.append("status = ?")
+            params.append(args["status"])
+        elif not args.get("all_statuses"):
+            conditions.append("status = ?")
+            params.append("Nov")
+
+        # Izključi junk
+        for pattern in self.JUNK_EMAIL_PATTERNS:
+            conditions.append("kategorija NOT LIKE ?")
+            params.append(pattern)
+
+        where = " AND ".join(conditions)
+
+        # Pridobi emaile
+        rows = self._execute_select(
+            f"""SELECT id, zadeva, posiljatelj, kategorija, status, datum, prejemniki
+                FROM ai_agent.Emaili WHERE {where} ORDER BY datum DESC""",
+            tuple(params)
+        )
+
+        if not rows:
+            return {
+                "success": True,
+                "povzetek": "Ni novih emailov v zadnjih {} dneh.".format(days),
+                "skupaj": 0,
+                "po_kategorijah": {},
+                "po_nabiralnikih": {}
+            }
+
+        # Grupiraj po kategorijah
+        po_kategorijah = {}
+        for r in rows:
+            kat = r.get("kategorija", "Nekategorizirano") or "Nekategorizirano"
+            if kat not in po_kategorijah:
+                po_kategorijah[kat] = {"stevilo": 0, "emaili": []}
+            po_kategorijah[kat]["stevilo"] += 1
+            if len(po_kategorijah[kat]["emaili"]) < 5:  # Max 5 primerov na kategorijo
+                po_kategorijah[kat]["emaili"].append({
+                    "id": r["id"],
+                    "od": r.get("posiljatelj", "?"),
+                    "zadeva": r.get("zadeva", "?"),
+                    "datum": str(r.get("datum", ""))[:16],
+                })
+
+        # Grupiraj po nabiralnikih (prejemniki)
+        po_nabiralnikih = {}
+        for r in rows:
+            prejemniki = r.get("prejemniki", "") or ""
+            for p in prejemniki.split(","):
+                p = p.strip().lower()
+                if p and "@luznar.com" in p:
+                    mailbox = p.split("@")[0]
+                    po_nabiralnikih[mailbox] = po_nabiralnikih.get(mailbox, 0) + 1
+
+        # Sestavi besedilni povzetek
+        lines = [f"POVZETEK EMAILOV (zadnjih {days} dni):"]
+        lines.append(f"Skupaj: {len(rows)} emailov\n")
+
+        lines.append("PO KATEGORIJAH:")
+        for kat, info in sorted(po_kategorijah.items(), key=lambda x: -x[1]["stevilo"]):
+            lines.append(f"  {kat}: {info['stevilo']} emailov")
+            for e in info["emaili"]:
+                lines.append(f"    - [{e['id']}] {e['od']}: {e['zadeva']} ({e['datum']})")
+
+        if po_nabiralnikih:
+            lines.append("\nPO NABIRALNIKIH:")
+            for mailbox, cnt in sorted(po_nabiralnikih.items(), key=lambda x: -x[1]):
+                lines.append(f"  {mailbox}@luznar.com: {cnt}")
+
+        return {
+            "success": True,
+            "povzetek": "\n".join(lines),
+            "skupaj": len(rows),
+            "po_kategorijah": {k: v["stevilo"] for k, v in po_kategorijah.items()},
+            "po_nabiralnikih": po_nabiralnikih
+        }
+
+    def _daily_report(self, args: dict) -> dict:
+        """Dnevno poročilo po nabiralnikih."""
+        datum = args.get("datum", "").strip()
+        if not datum:
+            datum = datetime.now().strftime("%Y-%m-%d")
+
+        samo_nabiralnik = (args.get("nabiralnik") or "").strip().lower()
+
+        # Pridobi vse emaile za ta dan
+        conditions = ["CAST(datum AS DATE) = ?"]
+        params = [datum]
+
+        # Izključi junk
+        for pattern in self.JUNK_EMAIL_PATTERNS:
+            conditions.append("kategorija NOT LIKE ?")
+            params.append(pattern)
+
+        where = " AND ".join(conditions)
+        rows = self._execute_select(
+            f"""SELECT id, zadeva, posiljatelj, prejemniki, kategorija, status, datum
+                FROM ai_agent.Emaili WHERE {where} ORDER BY datum DESC""",
+            tuple(params)
+        )
+
+        # Določi nabiralnike
+        all_mailboxes = [
+            "ales", "info", "spela", "nabava", "tehnolog",
+            "martina", "oddaja", "anela", "cam", "matej", "prevzem", "skladisce"
+        ]
+        if samo_nabiralnik:
+            all_mailboxes = [samo_nabiralnik]
+
+        # Grupiraj emaile po nabiralnikih
+        mailbox_data = {}
+        for mb in all_mailboxes:
+            mb_email = f"{mb}@luznar.com"
+            mb_rows = [
+                r for r in rows
+                if mb_email in (r.get("prejemniki", "") or "").lower()
+                or mb_email in (r.get("posiljatelj", "") or "").lower()
+            ]
+            if not mb_rows:
+                continue
+
+            # Grupiraj po kategorijah
+            po_kat = {}
+            for r in mb_rows:
+                kat = r.get("kategorija", "Nekategorizirano") or "Nekategorizirano"
+                if kat not in po_kat:
+                    po_kat[kat] = []
+                po_kat[kat].append({
+                    "id": r["id"],
+                    "od": r.get("posiljatelj", "?"),
+                    "zadeva": r.get("zadeva", "?"),
+                    "status": r.get("status", "?"),
+                })
+
+            mailbox_data[mb] = {
+                "skupaj": len(mb_rows),
+                "po_kategorijah": po_kat,
+            }
+
+        # Sestavi besedilni povzetek
+        lines = [f"DNEVNO POROČILO EMAILOV za {datum}"]
+        lines.append(f"Skupaj vseh emailov: {len(rows)}")
+        lines.append("=" * 50)
+
+        for mb in all_mailboxes:
+            if mb not in mailbox_data:
+                continue
+            info = mailbox_data[mb]
+            lines.append(f"\n📬 {mb.upper()}@luznar.com — {info['skupaj']} emailov")
+            lines.append("-" * 40)
+
+            for kat, emaili in sorted(info["po_kategorijah"].items(), key=lambda x: -len(x[1])):
+                lines.append(f"  {kat} ({len(emaili)}):")
+                for e in emaili[:5]:
+                    status_icon = {"Nov": "🆕", "Prebran": "📖", "Dodeljen": "📌", "Obdelan": "✅"}.get(e["status"], "")
+                    lines.append(f"    {status_icon} [{e['id']}] {e['od'].split('<')[0].strip()}: {e['zadeva'][:80]}")
+                if len(emaili) > 5:
+                    lines.append(f"    ... in še {len(emaili) - 5} emailov")
+
+        if not mailbox_data:
+            lines.append(f"\nNi emailov za datum {datum}.")
+
+        return {
+            "success": True,
+            "povzetek": "\n".join(lines),
+            "datum": datum,
+            "skupaj": len(rows),
+            "nabiralniki": {
+                f"{mb}@luznar.com": {
+                    "skupaj": info["skupaj"],
+                    "po_kategorijah": {k: len(v) for k, v in info["po_kategorijah"].items()}
+                }
+                for mb, info in mailbox_data.items()
+            }
+        }
 
     def _run_custom_query(self, args: dict) -> dict:
         query = args["query"].strip()

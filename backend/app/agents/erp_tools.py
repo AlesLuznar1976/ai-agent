@@ -435,6 +435,55 @@ READ_TOOLS = [
     {
         "type": "function",
         "function": {
+            "name": "summarize_emails",
+            "description": "Povzetek novih emailov - vrne strukturiran pregled po kategorijah s številom emailov, pošiljatelji in zadevami. Uporabi VEDNO ko uporabnik vpraša za povzetek, pregled ali stanje emailov.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "status": {
+                        "type": "string",
+                        "description": "Status emailov za povzetek (privzeto Nov)",
+                        "enum": ["Nov", "Prebran", "Dodeljen", "Obdelan"],
+                        "default": "Nov"
+                    },
+                    "all_statuses": {
+                        "type": "boolean",
+                        "description": "Vključi vse statuse",
+                        "default": False
+                    },
+                    "days": {
+                        "type": "integer",
+                        "description": "Število dni nazaj (privzeto 7)",
+                        "default": 7
+                    }
+                }
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "daily_report",
+            "description": "Dnevni povzetek emailov za VSAK nabiralnik posebej. Pokaže koliko emailov po kategorijah za vsakega (ales@, info@, nabava@, ...). Uporabi ko uporabnik vpraša za dnevno poročilo, povzetek po nabiralnikih, ali pregled pošte po zaposlenih.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "datum": {
+                        "type": "string",
+                        "description": "Datum za poročilo (YYYY-MM-DD). Privzeto danes.",
+                        "default": ""
+                    },
+                    "nabiralnik": {
+                        "type": "string",
+                        "description": "Opcijsko: samo en nabiralnik (npr. ales, nabava, info). Brez @luznar.com."
+                    }
+                }
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
             "name": "run_custom_query",
             "description": "Izvedi poljubno SELECT poizvedbo na bazi. SAMO za branje (SELECT). Uporabi ko noben drug tool ne zadostuje.",
             "parameters": {
