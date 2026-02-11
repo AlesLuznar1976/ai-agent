@@ -714,10 +714,8 @@ class ToolExecutor:
         }
 
     def _daily_report(self, args: dict) -> dict:
-        """Dnevno poročilo po nabiralnikih."""
-        datum = args.get("datum", "").strip()
-        if not datum:
-            datum = datetime.now().strftime("%Y-%m-%d")
+        """Dnevno poročilo po nabiralnikih. Vedno uporabi današnji datum."""
+        datum = datetime.now().strftime("%Y-%m-%d")
 
         samo_nabiralnik = (args.get("nabiralnik") or "").strip().lower()
 

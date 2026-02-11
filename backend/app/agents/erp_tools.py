@@ -464,15 +464,10 @@ READ_TOOLS = [
         "type": "function",
         "function": {
             "name": "daily_report",
-            "description": "Dnevni povzetek emailov za VSAK nabiralnik posebej. Pokaže koliko emailov po kategorijah za vsakega (ales@, info@, nabava@, ...). Uporabi ko uporabnik vpraša za dnevno poročilo, povzetek po nabiralnikih, ali pregled pošte po zaposlenih.",
+            "description": "Dnevni povzetek emailov za VSAK nabiralnik posebej. Pokaže koliko emailov po kategorijah za vsakega (ales@, info@, nabava@, ...). Uporabi ko uporabnik vpraša za dnevno poročilo, povzetek po nabiralnikih, ali pregled pošte po zaposlenih. NE pošiljaj parametra datum - sistem sam uporabi današnji datum.",
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "datum": {
-                        "type": "string",
-                        "description": "Datum za poročilo (YYYY-MM-DD). Privzeto danes.",
-                        "default": ""
-                    },
                     "nabiralnik": {
                         "type": "string",
                         "description": "Opcijsko: samo en nabiralnik (npr. ales, nabava, info). Brez @luznar.com."
