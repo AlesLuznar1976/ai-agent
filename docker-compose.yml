@@ -62,13 +62,13 @@ services:
 
   # Flutter Web App (nginx)
   web:
-    image: nginx:alpine
+    image: ghcr.io/alesluznar1976/ai-agent-web:latest
+    build:
+      context: ./flutter_app
+      dockerfile: Dockerfile.web
     container_name: ai-agent-web
     ports:
       - "9090:80"
-    volumes:
-      - ./flutter_app/web:/usr/share/nginx/html:ro
-      - ./nginx/web.conf:/etc/nginx/conf.d/default.conf:ro
     restart: unless-stopped
     networks:
       - ai-agent-network
