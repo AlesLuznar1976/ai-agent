@@ -1,0 +1,29 @@
+name: iOS Build
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: "3.32.4"
+          channel: stable
+
+      - name: Get Flutter packages
+        run: flutter pub get
+        working-directory: flutter_app
+
+      - name: Build iOS (no codesign)
+        run: flutter build ios --release --no-codesign
+        working-directory: flutter_app
+
+      - name: Upload app
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios-app
+          path: flutter_app/build/ios/iphoneos/*.app
