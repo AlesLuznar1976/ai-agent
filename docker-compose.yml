@@ -1,0 +1,70 @@
+
+services:
+  # AI Agent Backend (FastAPI)
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: ai-agent-backend
+    env_file:
+      - .env
+    ports:
+      - "8000:8000"
+    environment:
+      - APP_ENV=${APP_ENV:-development}
+      - DATABASE_URL=${DATABASE_URL}
+      - JWT_SECRET_KEY=${JWT_SECRET_KEY}
+      - OLLAMA_URL=http://ollama:11434
+      - OLLAMA_TOOL_MODEL=${OLLAMA_TOOL_MODEL:-llama3.1:8b}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - ANTHROPIC_MODEL=${ANTHROPIC_MODEL}
+      - MS_GRAPH_CLIENT_ID=${MS_GRAPH_CLIENT_ID}
+      - MS_GRAPH_CLIENT_SECRET=${MS_GRAPH_CLIENT_SECRET}
+      - MS_GRAPH_TENANT_ID=${MS_GRAPH_TENANT_ID}
+      - MS_GRAPH_MAILBOX=${MS_GRAPH_MAILBOX}
+      - ENCRYPTION_KEY=${ENCRYPTION_KEY}
+      - CORS_ORIGINS=${CORS_ORIGINS}
+    volumes:
+      - ./data/documents:/app/documents
+      - ./data/logs:/app/logs
+    depends_on:
+      - ollama
+    restart: unless-stopped
+    networks:
+      - ai-agent-network
+
+  # Ollama - Lokalni LLM z GPU
+  ollama:
+    image: ollama/ollama:latest
+    container_name: ai-agent-ollama
+    ports:
+      - "11434:11434"
+    volumes:
+      - ./data/ollama:/root/.ollama
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    restart: unless-stopped
+    networks:
+      - ai-agent-network
+
+  # Flutter Web App (nginx)
+  web:
+    image: nginx:alpine
+    container_name: ai-agent-web
+    ports:
+      - "9090:80"
+    volumes:
+      - ./flutter_app/web:/usr/share/nginx/html:ro
+      - ./nginx/web.conf:/etc/nginx/conf.d/default.conf:ro
+    restart: unless-stopped
+    networks:
+      - ai-agent-network
+
+networks:
+  ai-agent-network:
+    driver: bridge

@@ -1,0 +1,47 @@
+name: ai_agent_app
+description: AI Agent sistem za Luznar Electronics
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: '>=3.2.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  # UI
+  cupertino_icons: ^1.0.6
+  google_fonts: ^6.1.0
+
+  # State management
+  provider: ^6.1.1
+
+  # HTTP & WebSocket
+  http: ^1.2.0
+  web_socket_channel: ^2.4.0
+
+  # Storage
+  flutter_secure_storage: ^9.0.0
+  shared_preferences: ^2.2.2
+
+  # Notifications
+  flutter_local_notifications: ^17.0.0
+
+  # Utils
+  intl: ^0.19.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^3.0.1
+
+flutter:
+  uses-material-design: true
+
+  fonts:
+    - family: Roboto
+      fonts:
+        - asset: fonts/Roboto-Regular.ttf
+        - asset: fonts/Roboto-Bold.ttf
+          weight: 700
