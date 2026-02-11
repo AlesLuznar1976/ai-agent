@@ -1,0 +1,442 @@
+<!DOCTYPE html>
+<html lang="sl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Luznar AI Agent — Dnevnik napak</title>
+<style>
+  :root {
+    --bg-primary: #0f172a;
+    --bg-secondary: #1e293b;
+    --bg-card: #1e293b;
+    --border: #334155;
+    --text-primary: #f1f5f9;
+    --text-secondary: #94a3b8;
+    --text-muted: #64748b;
+    --green: #22c55e;
+    --red: #ef4444;
+    --yellow: #eab308;
+    --blue: #3b82f6;
+    --purple: #a855f7;
+    --orange: #f97316;
+  }
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+    background: var(--bg-primary);
+    color: var(--text-primary);
+    min-height: 100vh;
+    padding: 1rem;
+  }
+
+  /* Header */
+  .header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 1rem 1.5rem;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    margin-bottom: 1rem;
+  }
+  .header h1 {
+    font-size: 1.3rem;
+    font-weight: 700;
+    background: linear-gradient(135deg, var(--red), var(--orange));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+  }
+  .header-links a {
+    color: var(--blue);
+    text-decoration: none;
+    font-size: 0.85rem;
+    margin-left: 1rem;
+  }
+  .header-links a:hover { text-decoration: underline; }
+
+  /* Stevci */
+  .counters {
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    gap: 0.8rem;
+    margin-bottom: 1rem;
+  }
+  .counter-card {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 0.8rem 1rem;
+    text-align: center;
+    cursor: pointer;
+    transition: border-color 0.2s, transform 0.1s;
+  }
+  .counter-card:hover { transform: translateY(-2px); }
+  .counter-card.active { border-color: var(--blue); }
+  .counter-card .count {
+    font-size: 1.8rem;
+    font-weight: 800;
+    line-height: 1;
+  }
+  .counter-card .label {
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+    margin-top: 0.3rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+  .count-debug { color: var(--text-muted); }
+  .count-info { color: var(--blue); }
+  .count-warning { color: var(--yellow); }
+  .count-error { color: var(--red); }
+  .count-critical { color: var(--purple); }
+
+  /* Filtri */
+  .filters {
+    display: flex;
+    gap: 0.8rem;
+    margin-bottom: 1rem;
+    align-items: center;
+    flex-wrap: wrap;
+  }
+  .filters input, .filters select {
+    background: var(--bg-secondary);
+    border: 1px solid var(--border);
+    color: var(--text-primary);
+    padding: 0.5rem 0.8rem;
+    border-radius: 8px;
+    font-size: 0.85rem;
+    outline: none;
+  }
+  .filters input:focus, .filters select:focus {
+    border-color: var(--blue);
+  }
+  .filters input[type="text"] { flex: 1; min-width: 200px; }
+  .filters label {
+    color: var(--text-secondary);
+    font-size: 0.8rem;
+  }
+  .btn {
+    background: var(--blue);
+    color: white;
+    border: none;
+    padding: 0.5rem 1rem;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 0.85rem;
+    font-weight: 600;
+    transition: opacity 0.2s;
+  }
+  .btn:hover { opacity: 0.85; }
+  .btn-red { background: var(--red); }
+  .auto-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    font-size: 0.8rem;
+    color: var(--green);
+    padding: 0.4rem 0.8rem;
+    background: rgba(34,197,94,0.1);
+    border-radius: 8px;
+  }
+  .auto-badge .dot {
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    background: var(--green);
+    animation: pulse 2s infinite;
+  }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
+
+  /* Log tabela */
+  .log-container {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    overflow: hidden;
+  }
+  .log-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.82rem;
+  }
+  .log-table th {
+    background: rgba(51,65,85,0.5);
+    padding: 0.7rem 0.8rem;
+    text-align: left;
+    font-size: 0.72rem;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--text-secondary);
+    position: sticky;
+    top: 0;
+    z-index: 1;
+  }
+  .log-table td {
+    padding: 0.5rem 0.8rem;
+    border-top: 1px solid var(--border);
+    vertical-align: top;
+    max-width: 0;
+  }
+  .log-table tr:hover { background: rgba(59,130,246,0.05); }
+  .log-table tr.level-ERROR,
+  .log-table tr.level-CRITICAL { background: rgba(239,68,68,0.06); }
+  .log-table tr.level-WARNING { background: rgba(234,179,8,0.04); }
+
+  .td-time {
+    white-space: nowrap;
+    color: var(--text-muted);
+    font-family: monospace;
+    font-size: 0.78rem;
+    width: 160px;
+  }
+  .td-level { width: 80px; }
+  .level-badge {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-size: 0.7rem;
+    font-weight: 700;
+    letter-spacing: 0.03em;
+  }
+  .level-DEBUG { background: rgba(100,116,139,0.2); color: var(--text-muted); }
+  .level-INFO { background: rgba(59,130,246,0.15); color: var(--blue); }
+  .level-WARNING { background: rgba(234,179,8,0.15); color: var(--yellow); }
+  .level-ERROR { background: rgba(239,68,68,0.15); color: var(--red); }
+  .level-CRITICAL { background: rgba(168,85,247,0.2); color: var(--purple); }
+
+  .td-source {
+    color: var(--text-secondary);
+    font-family: monospace;
+    font-size: 0.76rem;
+    width: 180px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .td-message {
+    color: var(--text-primary);
+    word-break: break-word;
+    white-space: pre-wrap;
+  }
+  .exception-text {
+    margin-top: 0.4rem;
+    padding: 0.5rem;
+    background: rgba(239,68,68,0.08);
+    border-radius: 6px;
+    font-family: monospace;
+    font-size: 0.75rem;
+    color: var(--red);
+    white-space: pre-wrap;
+    max-height: 200px;
+    overflow-y: auto;
+  }
+
+  /* Prazen state */
+  .empty-state {
+    text-align: center;
+    padding: 3rem;
+    color: var(--text-muted);
+  }
+  .empty-state .icon { font-size: 2.5rem; margin-bottom: 0.8rem; }
+
+  /* Scrollable */
+  .log-scroll {
+    max-height: calc(100vh - 320px);
+    overflow-y: auto;
+  }
+
+  /* Responsive */
+  @media (max-width: 768px) {
+    .counters { grid-template-columns: repeat(3, 1fr); }
+    .filters { flex-direction: column; }
+    .td-source { display: none; }
+  }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1>Dnevnik napak</h1>
+  <div class="header-links">
+    <a href="/api/system/dashboard">System Monitor</a>
+    <a href="/docs">API Docs</a>
+  </div>
+</div>
+
+<!-- Stevci -->
+<div class="counters" id="counters">
+  <div class="counter-card" data-level="DEBUG" onclick="setLevel('DEBUG')">
+    <div class="count count-debug" id="cnt-DEBUG">0</div>
+    <div class="label">Razhroscevanje</div>
+  </div>
+  <div class="counter-card" data-level="INFO" onclick="setLevel('INFO')">
+    <div class="count count-info" id="cnt-INFO">0</div>
+    <div class="label">Informacije</div>
+  </div>
+  <div class="counter-card active" data-level="WARNING" onclick="setLevel('WARNING')">
+    <div class="count count-warning" id="cnt-WARNING">0</div>
+    <div class="label">Opozorila</div>
+  </div>
+  <div class="counter-card" data-level="ERROR" onclick="setLevel('ERROR')">
+    <div class="count count-error" id="cnt-ERROR">0</div>
+    <div class="label">Napake</div>
+  </div>
+  <div class="counter-card" data-level="CRITICAL" onclick="setLevel('CRITICAL')">
+    <div class="count count-critical" id="cnt-CRITICAL">0</div>
+    <div class="label">Kriticne</div>
+  </div>
+</div>
+
+<!-- Filtri -->
+<div class="filters">
+  <input type="text" id="searchInput" placeholder="Iskanje v sporocilih..." oninput="debouncedFetch()">
+  <select id="limitSelect" onchange="fetchLogs()">
+    <option value="50">50 vnosov</option>
+    <option value="100" selected>100 vnosov</option>
+    <option value="200">200 vnosov</option>
+    <option value="500">Vsi</option>
+  </select>
+  <label>
+    <input type="checkbox" id="autoRefresh" checked onchange="toggleAuto()"> Samodejno
+  </label>
+  <div class="auto-badge" id="autoBadge">
+    <span class="dot"></span>
+    Osvezujem vsake 3s
+  </div>
+  <button class="btn" onclick="fetchLogs()">Osvezi</button>
+</div>
+
+<!-- Log tabela -->
+<div class="log-container">
+  <div class="log-scroll" id="logScroll">
+    <table class="log-table">
+      <thead>
+        <tr>
+          <th>Cas</th>
+          <th>Nivo</th>
+          <th>Vir</th>
+          <th>Sporocilo</th>
+        </tr>
+      </thead>
+      <tbody id="logBody">
+        <tr><td colspan="4" class="empty-state">
+          <div class="icon">&#128270;</div>
+          <div>Nalagam dnevnik...</div>
+        </td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<script>
+let currentLevel = 'WARNING';
+let autoInterval = null;
+let debounceTimer = null;
+
+// Slovenian level names
+const levelNames = {
+  DEBUG: 'RAZHROSC.',
+  INFO: 'INFO',
+  WARNING: 'OPOZORILO',
+  ERROR: 'NAPAKA',
+  CRITICAL: 'KRITICNO'
+};
+
+function setLevel(level) {
+  currentLevel = level;
+  document.querySelectorAll('.counter-card').forEach(c => {
+    c.classList.toggle('active', c.dataset.level === level);
+  });
+  fetchLogs();
+}
+
+function debouncedFetch() {
+  clearTimeout(debounceTimer);
+  debounceTimer = setTimeout(fetchLogs, 300);
+}
+
+function toggleAuto() {
+  const on = document.getElementById('autoRefresh').checked;
+  document.getElementById('autoBadge').style.display = on ? 'inline-flex' : 'none';
+  if (on) startAuto();
+  else stopAuto();
+}
+
+function startAuto() {
+  stopAuto();
+  autoInterval = setInterval(fetchLogs, 3000);
+}
+
+function stopAuto() {
+  if (autoInterval) { clearInterval(autoInterval); autoInterval = null; }
+}
+
+function escapeHtml(text) {
+  const div = document.createElement('div');
+  div.textContent = text;
+  return div.innerHTML;
+}
+
+async function fetchLogs() {
+  const search = document.getElementById('searchInput').value;
+  const limit = document.getElementById('limitSelect').value;
+
+  const params = new URLSearchParams({
+    nivo: currentLevel,
+    limit: limit,
+  });
+  if (search) params.set('iskanje', search);
+
+  try {
+    const resp = await fetch('/api/system/dnevnik?' + params);
+    if (!resp.ok) throw new Error('HTTP ' + resp.status);
+    const data = await resp.json();
+
+    // Posodobi stevce
+    const counts = data.stevci || {};
+    for (const [level, cnt] of Object.entries(counts)) {
+      const el = document.getElementById('cnt-' + level);
+      if (el) el.textContent = cnt;
+    }
+
+    // Posodobi tabelo
+    const tbody = document.getElementById('logBody');
+    const entries = data.vnosi || [];
+
+    if (entries.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="4" class="empty-state">' +
+        '<div class="icon">&#9989;</div>' +
+        '<div>Ni vnosov za izbrani nivo: ' + escapeHtml(levelNames[currentLevel] || currentLevel) + '</div>' +
+        '<div style="font-size:0.8rem;margin-top:0.3rem;color:var(--text-muted)">Sistem deluje brez napak</div>' +
+        '</td></tr>';
+      return;
+    }
+
+    // Obrni vrstni red (najnovejse na vrhu)
+    entries.reverse();
+
+    tbody.innerHTML = entries.map(e => {
+      const time = e.timestamp ? e.timestamp.split('T')[1]?.substring(0, 12) || e.timestamp : '';
+      const date = e.timestamp ? e.timestamp.split('T')[0] : '';
+      const source = (e.module || '') + (e.function ? '.' + e.function : '') + (e.line ? ':' + e.line : '');
+      const levelDisplay = levelNames[e.level] || e.level;
+      const excHtml = e.exception ? '<div class="exception-text">' + escapeHtml(e.exception) + '</div>' : '';
+
+      return '<tr class="level-' + escapeHtml(e.level) + '">' +
+        '<td class="td-time" title="' + escapeHtml(date) + '">' + escapeHtml(time) + '</td>' +
+        '<td class="td-level"><span class="level-badge level-' + escapeHtml(e.level) + '">' + escapeHtml(levelDisplay) + '</span></td>' +
+        '<td class="td-source" title="' + escapeHtml(source) + '">' + escapeHtml(source) + '</td>' +
+        '<td class="td-message">' + escapeHtml(e.message) + excHtml + '</td>' +
+        '</tr>';
+    }).join('');
+  } catch (err) {
+    console.error('Napaka pri nalaganju dnevnika:', err);
+  }
+}
+
+// Init
+fetchLogs();
+startAuto();
+</script>
+</body>
+</html>

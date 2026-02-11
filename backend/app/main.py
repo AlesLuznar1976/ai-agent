@@ -4,7 +4,7 @@ from contextlib import asynccontextmanager
 
 from app.config import get_settings
 from app.database import check_connection
-from app.api import auth, chat, projekti, emaili, dokumenti
+from app.api import auth, chat, projekti, emaili, dokumenti, system_status
 from app.api.websocket import router as ws_router
 
 
@@ -15,6 +15,9 @@ settings = get_settings()
 async def lifespan(app: FastAPI):
     """Startup and shutdown events"""
     # Startup
+    from app.services.log_collector import setup_log_collector
+    setup_log_collector()
+
     print(f"Starting {settings.app_name}...")
     print(f"Environment: {settings.app_env}")
 
@@ -59,6 +62,7 @@ app.include_router(projekti.router, prefix="/api/projekti", tags=["Projekti"])
 app.include_router(emaili.router, prefix="/api/emaili", tags=["Emaili"])
 app.include_router(dokumenti.router, prefix="/api/dokumenti", tags=["Dokumenti"])
 app.include_router(ws_router, prefix="/ws", tags=["WebSocket"])
+app.include_router(system_status.router, prefix="/api/system", tags=["System"])
 
 
 @app.get("/health")
