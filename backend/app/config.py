@@ -37,7 +37,14 @@ class Settings(BaseSettings):
     ms_graph_client_id: Optional[str] = None
     ms_graph_client_secret: Optional[str] = None
     ms_graph_tenant_id: Optional[str] = None
-    ms_graph_mailbox: Optional[str] = None
+    ms_graph_mailbox: Optional[str] = None  # Lahko več, ločenih z vejico
+
+    @property
+    def ms_graph_mailboxes(self) -> list[str]:
+        """Vrni seznam vseh mailboxov za sinhronizacijo."""
+        if not self.ms_graph_mailbox:
+            return []
+        return [m.strip() for m in self.ms_graph_mailbox.split(",") if m.strip()]
 
     # CalcuQuote
     calcuquote_api_key: Optional[str] = None

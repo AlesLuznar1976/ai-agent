@@ -14,13 +14,14 @@ class LocalLLM:
         self.model = settings.ollama_model
         self.timeout = 120.0  # 2 minuti za dolge odgovore
 
-    async def complete(self, prompt: str, system_prompt: Optional[str] = None) -> str:
+    async def complete(self, prompt: str, system_prompt: Optional[str] = None, json_mode: bool = False) -> str:
         """
         Pošlje prompt na Ollama in vrne odgovor.
 
         Args:
             prompt: Uporabniški prompt
             system_prompt: Sistemski prompt (opcijsko)
+            json_mode: Prisili JSON format odgovora
         """
 
         messages = []
@@ -30,14 +31,18 @@ class LocalLLM:
 
         messages.append({"role": "user", "content": prompt})
 
+        request_body = {
+            "model": self.model,
+            "messages": messages,
+            "stream": False,
+        }
+        if json_mode:
+            request_body["format"] = "json"
+
         async with httpx.AsyncClient(timeout=self.timeout) as client:
             response = await client.post(
                 f"{self.base_url}/api/chat",
-                json={
-                    "model": self.model,
-                    "messages": messages,
-                    "stream": False,
-                }
+                json=request_body,
             )
 
             if response.status_code != 200:

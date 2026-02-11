@@ -1,10 +1,39 @@
 import json
+import re
 from typing import Optional
 from datetime import datetime
 from pydantic import BaseModel
 
 from app.llm import get_llm_router, TaskType
 from app.models import EmailKategorija, EmailAnalysis
+
+
+def _extract_json(text: str) -> dict:
+    """Izvleči JSON iz LLM odgovora (lahko obdan z markdown code blocki)."""
+    # 1. Poskusi direktno
+    text = text.strip()
+    try:
+        return json.loads(text)
+    except (json.JSONDecodeError, ValueError):
+        pass
+
+    # 2. Poišči JSON v code blockih ```json ... ``` ali ``` ... ```
+    code_block = re.search(r"```(?:json)?\s*\n?(.*?)\n?\s*```", text, re.DOTALL)
+    if code_block:
+        try:
+            return json.loads(code_block.group(1).strip())
+        except (json.JSONDecodeError, ValueError):
+            pass
+
+    # 3. Poišči prvi {..} blok
+    brace_match = re.search(r"\{.*\}", text, re.DOTALL)
+    if brace_match:
+        try:
+            return json.loads(brace_match.group(0))
+        except (json.JSONDecodeError, ValueError):
+            pass
+
+    raise ValueError(f"Ni mogoče izvleči JSON iz odgovora: {text[:200]}")
 
 
 class EmailAgent:
@@ -89,11 +118,12 @@ Vrni JSON:
             response = await self.llm.complete(
                 prompt,
                 task_type=TaskType.EMAIL_CATEGORIZATION,
-                contains_sensitive=True  # Emaili lahko vsebujejo občutljive podatke
+                contains_sensitive=True,  # Emaili lahko vsebujejo občutljive podatke
+                json_mode=True,  # Prisili JSON format iz Ollama
             )
 
-            # Parse JSON
-            data = json.loads(response)
+            # Parse JSON (Ollama lahko vrne markdown code block)
+            data = _extract_json(response)
 
             kategorija_str = data.get("kategorija", "Splošno")
             try:

@@ -2,6 +2,7 @@
 Email Sync Service - sinhronizacija emailov iz MS Graph.
 
 Centralna logika ki jo kličeta API endpoint in tool executor.
+Podpira več mailboxov (konfiguracija v .env).
 """
 
 import httpx
@@ -39,6 +40,7 @@ async def get_ms_graph_token() -> Optional[str]:
 
 async def fetch_emails_from_graph(
     token: str,
+    mailbox: str,
     top: int = 50,
     since: Optional[datetime] = None,
 ) -> list[dict]:
@@ -46,10 +48,10 @@ async def fetch_emails_from_graph(
 
     Args:
         token: MS Graph access token
+        mailbox: Email naslov mailboxa
         top: Število emailov na stran
         since: Filtrira emaile od tega datuma naprej
     """
-    mailbox = settings.ms_graph_mailbox
     url = f"https://graph.microsoft.com/v1.0/users/{mailbox}/messages"
     headers = {"Authorization": f"Bearer {token}"}
     params = {
@@ -62,13 +64,12 @@ async def fetch_emails_from_graph(
         params["$filter"] = f"receivedDateTime ge {since.strftime('%Y-%m-%dT%H:%M:%SZ')}"
 
     all_emails = []
-    consecutive_existing = 0
-    max_consecutive = 3
 
     async with httpx.AsyncClient(timeout=30.0) as client:
         while url:
             response = await client.get(url, headers=headers, params=params)
             if response.status_code != 200:
+                print(f"Graph API error for {mailbox}: {response.status_code}")
                 break
 
             data = response.json()
@@ -90,7 +91,7 @@ async def sync_emails_from_outlook(
     db: Session,
     top: int = 50,
 ) -> dict:
-    """Sinhroniziraj emaile iz Outlook.
+    """Sinhroniziraj emaile iz vseh konfiguriranih mailboxov.
 
     Centralna funkcija ki jo kličeta API endpoint in tool executor.
 
@@ -105,11 +106,53 @@ async def sync_emails_from_outlook(
             "new_emails": [],
         }
 
+    mailboxes = settings.ms_graph_mailboxes
+    if not mailboxes:
+        return {
+            "message": "Ni konfiguriranih mailboxov (MS_GRAPH_MAILBOX)",
+            "synced": 0,
+            "new_emails": [],
+        }
+
     # Pridobi datum zadnjega emaila za inkrementalno sinhronizacijo
     since = crud_emaili.get_latest_email_date(db)
 
-    graph_emails = await fetch_emails_from_graph(token, top=top, since=since)
     email_agent = get_email_agent()
+    all_new_emails = []
+
+    for mailbox in mailboxes:
+        try:
+            new_from_mailbox = await _sync_one_mailbox(
+                db=db,
+                token=token,
+                mailbox=mailbox,
+                email_agent=email_agent,
+                top=top,
+                since=since,
+            )
+            all_new_emails.extend(new_from_mailbox)
+        except Exception as e:
+            print(f"Sync error for {mailbox}: {e}")
+
+    return {
+        "message": f"Sinhronizirano {len(all_new_emails)} novih emailov iz {len(mailboxes)} mailboxov",
+        "synced": len(all_new_emails),
+        "mailboxes": len(mailboxes),
+        "new_emails": all_new_emails,
+    }
+
+
+async def _sync_one_mailbox(
+    db: Session,
+    token: str,
+    mailbox: str,
+    email_agent,
+    top: int = 50,
+    since: Optional[datetime] = None,
+) -> list[dict]:
+    """Sinhroniziraj emaile iz enega mailboxa."""
+
+    graph_emails = await fetch_emails_from_graph(token, mailbox=mailbox, top=top, since=since)
     new_emails = []
     consecutive_existing = 0
 
@@ -127,7 +170,9 @@ async def sync_emails_from_outlook(
 
         zadeva = msg.get("subject", "Brez zadeve")
         from_data = msg.get("from", {}).get("emailAddress", {})
-        posiljatelj = f"{from_data.get('name', '')} <{from_data.get('address', '')}>"
+        from_name = from_data.get('name', '').strip()
+        from_addr = from_data.get('address', '').strip()
+        posiljatelj = f"{from_name} <{from_addr}>" if from_name else from_addr
         prejemniki_list = msg.get("toRecipients", [])
         prejemniki = ", ".join(
             r.get("emailAddress", {}).get("address", "") for r in prejemniki_list
@@ -147,7 +192,7 @@ async def sync_emails_from_outlook(
         # AI kategorizacija z EmailAgent
         attachment_names = []
         if has_attachments:
-            att_meta = await _fetch_attachment_names(token, outlook_id)
+            att_meta = await _fetch_attachment_names(token, mailbox, outlook_id)
             attachment_names = [a.get("name", "") for a in att_meta]
 
         analysis = await email_agent.categorize_email(
@@ -163,6 +208,7 @@ async def sync_emails_from_outlook(
             "zaupanje": analysis.zaupanje,
             "povzetek": analysis.povzetek,
             "predlagan_projekt_id": analysis.predlagan_projekt_id,
+            "mailbox": mailbox,
             **analysis.izvleceni_podatki,
         }
 
@@ -187,16 +233,11 @@ async def sync_emails_from_outlook(
 
         new_emails.append(_db_email_to_dict(db_email))
 
-    return {
-        "message": f"Sinhronizirano {len(new_emails)} novih emailov",
-        "synced": len(new_emails),
-        "new_emails": new_emails,
-    }
+    return new_emails
 
 
-async def _fetch_attachment_names(token: str, message_id: str) -> list[dict]:
+async def _fetch_attachment_names(token: str, mailbox: str, message_id: str) -> list[dict]:
     """Pridobi seznam prilog emaila (samo imena/metadata)."""
-    mailbox = settings.ms_graph_mailbox
     url = f"https://graph.microsoft.com/v1.0/users/{mailbox}/messages/{message_id}/attachments"
     headers = {"Authorization": f"Bearer {token}"}
     params = {"$select": "id,name,size,contentType"}

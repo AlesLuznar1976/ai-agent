@@ -49,6 +49,7 @@ class LLMRouter:
         contains_sensitive: bool = False,
         force_local: bool = False,
         force_cloud: bool = False,
+        json_mode: bool = False,
     ) -> str:
         """
         Pošlje prompt na ustrezen LLM.
@@ -59,11 +60,12 @@ class LLMRouter:
             contains_sensitive: Ali vsebuje občutljive podatke
             force_local: Prisili uporabo lokalnega LLM
             force_cloud: Prisili uporabo cloud LLM
+            json_mode: Prisili JSON format odgovora (samo Ollama)
         """
 
         # Občutljivi podatki vedno lokalno
         if contains_sensitive or force_local:
-            return await self._try_local_with_fallback(prompt)
+            return await self._try_local_with_fallback(prompt, json_mode=json_mode)
 
         # Prisili cloud
         if force_cloud:
@@ -71,14 +73,14 @@ class LLMRouter:
 
         # Routing glede na tip naloge
         if task_type in self.LOCAL_TASKS:
-            return await self._try_local_with_fallback(prompt)
+            return await self._try_local_with_fallback(prompt, json_mode=json_mode)
         else:
             return await self._try_cloud_with_fallback(prompt)
 
-    async def _try_local_with_fallback(self, prompt: str) -> str:
+    async def _try_local_with_fallback(self, prompt: str, json_mode: bool = False) -> str:
         """Poskusi lokalni LLM, fallback na cloud"""
         try:
-            return await self.local_llm.complete(prompt)
+            return await self.local_llm.complete(prompt, json_mode=json_mode)
         except Exception as e:
             print(f"Lokalni LLM napaka: {e}, poskušam cloud...")
             return await self.cloud_llm.complete(prompt)

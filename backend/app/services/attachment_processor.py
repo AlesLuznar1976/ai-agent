@@ -30,9 +30,9 @@ DOCUMENTS_BASE_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.dirna
 # MS Graph priloge
 # ============================================================
 
-async def fetch_attachment_metadata(token: str, message_id: str) -> list[dict]:
+async def fetch_attachment_metadata(token: str, message_id: str, mailbox: str = None) -> list[dict]:
     """Pridobi seznam prilog emaila (id, ime, velikost, tip)."""
-    mailbox = settings.ms_graph_mailbox
+    mailbox = mailbox or (settings.ms_graph_mailboxes[0] if settings.ms_graph_mailboxes else settings.ms_graph_mailbox)
     url = f"https://graph.microsoft.com/v1.0/users/{mailbox}/messages/{message_id}/attachments"
     headers = {"Authorization": f"Bearer {token}"}
     params = {"$select": "id,name,size,contentType"}
@@ -47,9 +47,9 @@ async def fetch_attachment_metadata(token: str, message_id: str) -> list[dict]:
     return []
 
 
-async def download_attachment(token: str, message_id: str, attachment_id: str) -> Optional[bytes]:
+async def download_attachment(token: str, message_id: str, attachment_id: str, mailbox: str = None) -> Optional[bytes]:
     """Prenese vsebino priloge iz MS Graph (base64 → bytes)."""
-    mailbox = settings.ms_graph_mailbox
+    mailbox = mailbox or (settings.ms_graph_mailboxes[0] if settings.ms_graph_mailboxes else settings.ms_graph_mailbox)
     url = f"https://graph.microsoft.com/v1.0/users/{mailbox}/messages/{message_id}/attachments/{attachment_id}"
     headers = {"Authorization": f"Bearer {token}"}
 
@@ -225,8 +225,17 @@ async def process_email_attachments(db: Session, db_email) -> dict:
     if not token:
         return {"error": "MS Graph ni na voljo", "processed": 0}
 
+    # Ugotovi mailbox iz izvlečenih podatkov
+    mailbox = None
+    if db_email.izvleceni_podatki:
+        try:
+            izvl = json.loads(db_email.izvleceni_podatki)
+            mailbox = izvl.get("mailbox")
+        except (json.JSONDecodeError, TypeError):
+            pass
+
     # Pridobi seznam prilog
-    attachments = await fetch_attachment_metadata(token, db_email.outlook_id)
+    attachments = await fetch_attachment_metadata(token, db_email.outlook_id, mailbox=mailbox)
     if not attachments:
         return {"message": "Email nima prilog", "processed": 0}
 
@@ -243,7 +252,7 @@ async def process_email_attachments(db: Session, db_email) -> dict:
         doc_tip = classify_attachment(att_name, att_type)
 
         # Prenesi
-        content = await download_attachment(token, db_email.outlook_id, att_id)
+        content = await download_attachment(token, db_email.outlook_id, att_id, mailbox=mailbox)
         if not content:
             updated_priloge.append({
                 "id": att_id,
