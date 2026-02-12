@@ -47,6 +47,9 @@ services:
     container_name: ai-agent-ollama
     ports:
       - "11434:11434"
+    environment:
+      - NVIDIA_VISIBLE_DEVICES=all
+      - NVIDIA_DRIVER_CAPABILITIES=compute,utility
     volumes:
       - ./data/ollama:/root/.ollama
     deploy:

@@ -216,7 +216,7 @@ Analiziraj naslednje povpraševanje (RFQ email) in iz njega izvleci VSE relevant
 - Testne zahteve (ICT, funkcionalni test, ...)
 - Posebne zahteve (conformal coating, potting, ...)
 
-Vrni IZKLJUČNO veljaven JSON v naslednji strukturi (brez komentarjev, brez markdown):
+POMEMBNO: Vrni IZKLJUČNO EN SAM veljaven JSON objekt. Brez razlage, brez markdown, brez komentarjev, brez oštevilčenja - SAMO JSON:
 {{
     "stranka": {{
         "ime": "ime podjetja ali osebe",
@@ -250,11 +250,18 @@ async def _run_llm_analysis(prompt: str) -> dict:
     """Pošlje prompt na Claude preko LLM routerja in parsira JSON odgovor."""
     llm = get_llm_router()
 
-    response = await llm.complete(
-        prompt,
-        task_type=TaskType.COMPLEX_REASONING,
-        contains_sensitive=False,
-    )
+    # Začasno povečaj timeout za lokalni LLM (velike priloge)
+    original_timeout = llm.local_llm.timeout
+    llm.local_llm.timeout = 300.0  # 5 minut za analizo z prilogami
+
+    try:
+        response = await llm.complete(
+            prompt,
+            task_type=TaskType.COMPLEX_REASONING,
+            force_local=True,
+        )
+    finally:
+        llm.local_llm.timeout = original_timeout
 
     # Parse JSON iz odgovora
     text = response.strip()
@@ -273,7 +280,29 @@ async def _run_llm_analysis(prompt: str) -> dict:
         except (json.JSONDecodeError, ValueError):
             pass
 
-    # Poišči prvi {..} blok
+    # Poišči največji {..} blok ki se parsira kot JSON
+    # (lokalni LLM včasih vrne več manjših JSON blokov namesto enega)
+    brace_starts = [m.start() for m in re.finditer(r"\{", text)]
+    for start in brace_starts:
+        # Najdi ujemajoč zaključni }
+        depth = 0
+        for i in range(start, len(text)):
+            if text[i] == "{":
+                depth += 1
+            elif text[i] == "}":
+                depth -= 1
+                if depth == 0:
+                    candidate = text[start:i + 1]
+                    try:
+                        parsed = json.loads(candidate)
+                        # Preveri da ima vsaj 3 ključe (ni fragmentiran)
+                        if isinstance(parsed, dict) and len(parsed) >= 3:
+                            return parsed
+                    except (json.JSONDecodeError, ValueError):
+                        pass
+                    break
+
+    # Fallback: poskusi katerikoli {..} blok
     brace_match = re.search(r"\{.*\}", text, re.DOTALL)
     if brace_match:
         try:
