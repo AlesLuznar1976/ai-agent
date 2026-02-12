@@ -15,9 +15,11 @@ class EmailiScreen extends StatefulWidget {
 }
 
 class _EmailiScreenState extends State<EmailiScreen> {
+  List<Email> _vsiEmaili = [];
   List<Email> _emaili = [];
   bool _isLoading = true;
   String? _selectedStatus;
+  String? _selectedMailbox;
   String? _error;
 
   final List<String> _statusi = [
@@ -27,6 +29,22 @@ class _EmailiScreenState extends State<EmailiScreen> {
     'V obdelavi',
     'Napaka',
     'Brez',
+  ];
+
+  final List<String> _predali = [
+    'Vsi',
+    'ales',
+    'info',
+    'spela',
+    'nabava',
+    'tehnolog',
+    'martina',
+    'oddaja',
+    'anela',
+    'cam',
+    'matej',
+    'prevzem',
+    'skladisce',
   ];
 
   @override
@@ -43,15 +61,11 @@ class _EmailiScreenState extends State<EmailiScreen> {
 
     try {
       final apiService = context.read<ApiService>();
-      final emaili = await apiService.getEmaili(
-        analizaStatus:
-            (_selectedStatus == null || _selectedStatus == 'Vse')
-                ? null
-                : _selectedStatus,
-      );
+      final emaili = await apiService.getEmaili();
 
       setState(() {
-        _emaili = emaili;
+        _vsiEmaili = emaili;
+        _applyFilters();
         _isLoading = false;
       });
     } catch (e) {
@@ -60,6 +74,29 @@ class _EmailiScreenState extends State<EmailiScreen> {
         _isLoading = false;
       });
     }
+  }
+
+  void _applyFilters() {
+    var filtered = _vsiEmaili;
+
+    // Filter by analiza status
+    final status = _selectedStatus;
+    if (status != null && status != 'Vse') {
+      filtered = filtered
+          .where((e) => (e.analizaStatus ?? 'Brez') == status)
+          .toList();
+    }
+
+    // Filter by mailbox
+    final mailbox = _selectedMailbox;
+    if (mailbox != null && mailbox != 'Vsi') {
+      filtered = filtered.where((e) {
+        final m = e.izvleceniPodatki?['mailbox'];
+        return m != null && m.toString() == mailbox;
+      }).toList();
+    }
+
+    _emaili = filtered;
   }
 
   Color _statusColor(String? status) {
@@ -130,8 +167,69 @@ class _EmailiScreenState extends State<EmailiScreen> {
                     onSelected: (selected) {
                       setState(() {
                         _selectedStatus = selected ? status : null;
+                        _applyFilters();
                       });
-                      _loadEmaili();
+                    },
+                  ),
+                );
+              },
+            ),
+          ),
+
+          Divider(height: 1, color: LuznarBrand.navy.withValues(alpha: 0.06)),
+
+          // Mailbox filter bar
+          Container(
+            height: 52,
+            padding: const EdgeInsets.symmetric(horizontal: 12),
+            color: LuznarBrand.surfaceWhite,
+            child: ListView.builder(
+              scrollDirection: Axis.horizontal,
+              itemCount: _predali.length,
+              itemBuilder: (context, index) {
+                final predal = _predali[index];
+                final isSelected = (_selectedMailbox ?? 'Vsi') == predal;
+
+                return Padding(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 3, vertical: 8),
+                  child: FilterChip(
+                    avatar: predal != 'Vsi'
+                        ? Icon(Icons.inbox_outlined,
+                            size: 14,
+                            color: isSelected
+                                ? LuznarBrand.gold
+                                : LuznarBrand.textMuted)
+                        : null,
+                    label: Text(
+                      predal,
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight:
+                            isSelected ? FontWeight.w600 : FontWeight.w400,
+                        color: isSelected
+                            ? LuznarBrand.navy
+                            : LuznarBrand.textSecondary,
+                      ),
+                    ),
+                    selected: isSelected,
+                    selectedColor: LuznarBrand.gold.withValues(alpha: 0.1),
+                    backgroundColor: LuznarBrand.surfaceWhite,
+                    checkmarkColor: LuznarBrand.gold,
+                    side: BorderSide(
+                      color: isSelected
+                          ? LuznarBrand.gold.withValues(alpha: 0.3)
+                          : LuznarBrand.navy.withValues(alpha: 0.1),
+                    ),
+                    shape: RoundedRectangleBorder(
+                      borderRadius:
+                          BorderRadius.circular(LuznarBrand.radiusXLarge),
+                    ),
+                    onSelected: (selected) {
+                      setState(() {
+                        _selectedMailbox = selected ? predal : null;
+                        _applyFilters();
+                      });
                     },
                   ),
                 );
