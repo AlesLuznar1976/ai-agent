@@ -4,6 +4,7 @@ import 'package:http/http.dart' as http;
 import '../config/app_config.dart';
 import '../models/projekt.dart';
 import '../models/chat.dart';
+import '../models/email.dart';
 import 'auth_service.dart';
 
 /// Servis za API klice
@@ -143,6 +144,68 @@ class ApiService {
     }
 
     throw Exception('Napaka pri pridobivanju časovnice');
+  }
+
+  // ==================== EMAILI ====================
+
+  /// Seznam emailov
+  Future<List<Email>> getEmaili({
+    String? kategorija,
+    String? analizaStatus,
+  }) async {
+    var url = '${AppConfig.apiBaseUrl}/emaili?';
+
+    if (kategorija != null) url += 'kategorija=$kategorija&';
+
+    final response = await http.get(
+      Uri.parse(url),
+      headers: await _headers,
+    );
+
+    if (response.statusCode == 200) {
+      final data = jsonDecode(response.body);
+      final emaili = data['emaili'] as List;
+      var result = emaili.map((e) => Email.fromJson(e)).toList();
+
+      // Filter locally by analiza_status (backend may not support this filter)
+      if (analizaStatus != null) {
+        result = result
+            .where((e) => (e.analizaStatus ?? 'Brez') == analizaStatus)
+            .toList();
+      }
+
+      return result;
+    }
+
+    throw Exception('Napaka pri pridobivanju emailov');
+  }
+
+  /// Pridobi analizo emaila
+  Future<Map<String, dynamic>> getEmailAnalysis(int emailId) async {
+    final response = await http.get(
+      Uri.parse('${AppConfig.apiBaseUrl}/emaili/$emailId/analysis'),
+      headers: await _headers,
+    );
+
+    if (response.statusCode == 200) {
+      return jsonDecode(response.body);
+    }
+
+    throw Exception('Napaka pri pridobivanju analize');
+  }
+
+  /// Sproži analizo emaila
+  Future<Map<String, dynamic>> triggerAnalysis(int emailId) async {
+    final response = await http.post(
+      Uri.parse('${AppConfig.apiBaseUrl}/emaili/$emailId/analyze'),
+      headers: await _headers,
+    );
+
+    if (response.statusCode == 200) {
+      return jsonDecode(response.body);
+    }
+
+    throw Exception('Napaka pri sprožanju analize: ${response.statusCode}');
   }
 
   // ==================== HEALTH ====================

@@ -5,6 +5,7 @@ import '../config/brand_theme.dart';
 import '../services/auth_service.dart';
 import 'chat_screen.dart';
 import 'projects_screen.dart';
+import 'emaili_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -19,6 +20,7 @@ class _HomeScreenState extends State<HomeScreen> {
   final List<Widget> _screens = const [
     ChatScreen(),
     ProjectsScreen(),
+    EmailiScreen(),
   ];
 
   @override
@@ -158,6 +160,11 @@ class _HomeScreenState extends State<HomeScreen> {
               icon: Icon(Icons.folder_outlined),
               selectedIcon: Icon(Icons.folder),
               label: 'Projekti',
+            ),
+            NavigationDestination(
+              icon: Icon(Icons.email_outlined),
+              selectedIcon: Icon(Icons.email),
+              label: 'Emaili',
             ),
           ],
         ),
