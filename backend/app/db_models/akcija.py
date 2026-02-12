@@ -21,7 +21,10 @@ class DBCakajocaAkcija(Base):
     datum_ustvarjeno = Column(DateTime, default=datetime.now)
     potrdil_uporabnik = Column(Integer, ForeignKey("ai_agent.Uporabniki.id"), nullable=True)
     datum_potrjeno = Column(DateTime, nullable=True)
+    user_id = Column(Integer, ForeignKey("ai_agent.Uporabniki.id"), nullable=True)
+    rezultat = Column(Text, nullable=True)  # JSON rezultat izvedbe
 
     # Relationships
     projekt = relationship("DBProjekt", back_populates="cakajce_akcije")
-    uporabnik = relationship("DBUporabnik")
+    uporabnik = relationship("DBUporabnik", foreign_keys=[potrdil_uporabnik])
+    kreiral = relationship("DBUporabnik", foreign_keys=[user_id])

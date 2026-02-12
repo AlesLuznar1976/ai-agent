@@ -31,3 +31,17 @@ from app.crud.dokumenti import (
     create_dokument,
     delete_dokument,
 )
+from app.crud.chat_history import (
+    add_message,
+    get_user_history,
+    get_project_history,
+    clear_user_history,
+)
+from app.crud.akcije import (
+    create_pending_action,
+    get_pending_action,
+    list_pending_actions,
+    confirm_action,
+    reject_action,
+    fail_action,
+)

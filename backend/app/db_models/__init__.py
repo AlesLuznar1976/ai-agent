@@ -14,6 +14,7 @@ from app.db_models.casovnica import DBProjektCasovnica
 from app.db_models.audit import DBAuditLog
 from app.db_models.seja import DBAktivnaSeja
 from app.db_models.obvestilo import DBObvestilo
+from app.db_models.chat_history import DBChatMessage
 
 __all__ = [
     "DBUporabnik",
@@ -27,4 +28,5 @@ __all__ = [
     "DBAuditLog",
     "DBAktivnaSeja",
     "DBObvestilo",
+    "DBChatMessage",
 ]
