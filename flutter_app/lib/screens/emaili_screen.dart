@@ -91,8 +91,8 @@ class _EmailiScreenState extends State<EmailiScreen> {
     final mailbox = _selectedMailbox;
     if (mailbox != null && mailbox != 'Vsi') {
       filtered = filtered.where((e) {
-        final m = e.izvleceniPodatki?['mailbox'];
-        return m != null && m.toString() == mailbox;
+        final m = e.izvleceniPodatki?['mailbox']?.toString() ?? '';
+        return m == '$mailbox@luznar.com' || m == mailbox;
       }).toList();
     }
 
