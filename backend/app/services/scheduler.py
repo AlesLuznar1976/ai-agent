@@ -80,6 +80,15 @@ class EmailSyncScheduler:
             else:
                 print("Email sync: no new emails")
 
+            # Po sync-u obdelaj čakajoče RFQ analize
+            try:
+                from app.services.rfq_analyzer import process_pending_analyses
+                analyzed = await process_pending_analyses(db)
+                if analyzed > 0:
+                    print(f"RFQ analysis: {analyzed} emails analyzed")
+            except Exception as e:
+                print(f"RFQ analysis scheduler error: {e}")
+
         finally:
             db.close()
 

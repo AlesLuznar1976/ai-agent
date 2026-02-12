@@ -48,6 +48,8 @@ class Email(EmailBase):
     datum: datetime
     izvleceni_podatki: Optional[dict] = None
     priloge: Optional[list[str]] = None
+    analiza_status: Optional[str] = None
+    analiza_rezultat: Optional[dict] = None
 
     class Config:
         from_attributes = True

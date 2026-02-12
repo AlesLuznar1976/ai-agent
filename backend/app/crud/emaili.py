@@ -55,6 +55,16 @@ def list_nekategorizirani(db: Session) -> list[DBEmail]:
     )
 
 
+def list_emails_pending_analysis(db: Session) -> list[DBEmail]:
+    """Vrne emaile z analiza_status='Čaka'"""
+    return (
+        db.query(DBEmail)
+        .filter(DBEmail.analiza_status == "Čaka")
+        .order_by(DBEmail.datum)
+        .all()
+    )
+
+
 def create_email(
     db: Session,
     outlook_id: str,
@@ -99,7 +109,7 @@ def update_email(
     for key, value in kwargs.items():
         if value is not None and hasattr(db_email, key):
             # JSON polja serializiraj
-            if key in ("izvleceni_podatki", "priloge") and isinstance(value, (dict, list)):
+            if key in ("izvleceni_podatki", "priloge", "analiza_rezultat") and isinstance(value, (dict, list)):
                 value = json.dumps(value)
             setattr(db_email, key, value)
 

@@ -231,6 +231,10 @@ async def _sync_one_mailbox(
             priloge=priloge_meta,
         )
 
+        # Če je RFQ/Naročilo, označi za analizo
+        if analysis.kategorija.value in ("RFQ", "Naročilo"):
+            crud_emaili.update_email(db, db_email.id, analiza_status="Čaka")
+
         new_emails.append(_db_email_to_dict(db_email))
 
     return new_emails

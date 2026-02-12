@@ -35,6 +35,13 @@ def db_email_to_response(db_email) -> dict:
         except (json.JSONDecodeError, TypeError):
             priloge = None
 
+    analiza_rezultat = None
+    if db_email.analiza_rezultat:
+        try:
+            analiza_rezultat = json.loads(db_email.analiza_rezultat)
+        except (json.JSONDecodeError, TypeError):
+            analiza_rezultat = None
+
     return {
         "id": db_email.id,
         "outlook_id": db_email.outlook_id,
@@ -48,6 +55,8 @@ def db_email_to_response(db_email) -> dict:
         "datum": db_email.datum.isoformat() if db_email.datum else None,
         "izvleceni_podatki": izvleceni,
         "priloge": priloge,
+        "analiza_status": db_email.analiza_status,
+        "analiza_rezultat": analiza_rezultat,
     }
 
 
@@ -312,6 +321,63 @@ async def update_email(
     db_email = crud_emaili.update_email(db, email_id, **update_data)
 
     return db_email_to_response(db_email)
+
+
+# ============================================================
+# RFQ Deep Analysis
+# ============================================================
+
+@router.post("/{email_id}/analyze")
+async def analyze_email(
+    email_id: int,
+    current_user: TokenData = Depends(require_permission(Permission.EMAIL_VIEW)),
+    db: Session = Depends(get_db),
+):
+    """Ročni trigger poglobljene analize RFQ emaila."""
+
+    db_email = crud_emaili.get_email_by_id(db, email_id)
+    if not db_email:
+        raise HTTPException(status_code=404, detail="Email ne obstaja")
+
+    from app.services.rfq_analyzer import analyze_rfq_email
+
+    try:
+        crud_emaili.update_email(db, email_id, analiza_status="Čaka")
+        result = await analyze_rfq_email(db, email_id)
+        return {
+            "message": "Analiza uspešna",
+            "email_id": email_id,
+            "analiza_status": "Končano",
+            "analiza_rezultat": result,
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Napaka pri analizi: {str(e)}")
+
+
+@router.get("/{email_id}/analysis")
+async def get_email_analysis(
+    email_id: int,
+    current_user: TokenData = Depends(require_permission(Permission.EMAIL_VIEW)),
+    db: Session = Depends(get_db),
+):
+    """Pridobi rezultat poglobljene analize emaila."""
+
+    db_email = crud_emaili.get_email_by_id(db, email_id)
+    if not db_email:
+        raise HTTPException(status_code=404, detail="Email ne obstaja")
+
+    analiza_rezultat = None
+    if db_email.analiza_rezultat:
+        try:
+            analiza_rezultat = json.loads(db_email.analiza_rezultat)
+        except (json.JSONDecodeError, TypeError):
+            analiza_rezultat = None
+
+    return {
+        "email_id": email_id,
+        "analiza_status": db_email.analiza_status,
+        "analiza_rezultat": analiza_rezultat,
+    }
 
 
 # ============================================================

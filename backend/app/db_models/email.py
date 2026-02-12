@@ -22,6 +22,8 @@ class DBEmail(Base):
     datum = Column(DateTime, nullable=False)
     izvleceni_podatki = Column(Text, nullable=True)  # JSON string
     priloge = Column(Text, nullable=True)  # JSON string
+    analiza_status = Column(String(50), nullable=True)    # NULL, Čaka, V obdelavi, Končano, Napaka
+    analiza_rezultat = Column(Text, nullable=True)         # JSON
 
     # Relationships
     projekt = relationship("DBProjekt", back_populates="emaili")
