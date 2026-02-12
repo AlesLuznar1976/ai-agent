@@ -1,0 +1,579 @@
+<!DOCTYPE html>
+<html lang="sl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Luznar AI Agent — Pregled emailov</title>
+<style>
+  :root {
+    --bg-primary: #0f172a;
+    --bg-secondary: #1e293b;
+    --bg-card: #1e293b;
+    --border: #334155;
+    --text-primary: #f1f5f9;
+    --text-secondary: #94a3b8;
+    --text-muted: #64748b;
+    --green: #22c55e;
+    --red: #ef4444;
+    --yellow: #eab308;
+    --blue: #3b82f6;
+    --purple: #a855f7;
+    --orange: #f97316;
+    --cyan: #06b6d4;
+  }
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+    background: var(--bg-primary);
+    color: var(--text-primary);
+    min-height: 100vh;
+    padding: 1rem;
+  }
+
+  .header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 1rem 1.5rem;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    margin-bottom: 1rem;
+  }
+  .header h1 {
+    font-size: 1.3rem;
+    font-weight: 700;
+    background: linear-gradient(135deg, var(--blue), var(--cyan));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+  }
+  .header-links a {
+    color: var(--blue);
+    text-decoration: none;
+    font-size: 0.85rem;
+    margin-left: 1rem;
+  }
+  .header-links a:hover { text-decoration: underline; }
+
+  /* Tabs */
+  .tabs {
+    display: flex;
+    gap: 0.5rem;
+    margin-bottom: 1rem;
+  }
+  .tab {
+    padding: 0.6rem 1.2rem;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    color: var(--text-secondary);
+    cursor: pointer;
+    font-size: 0.85rem;
+    font-weight: 600;
+    transition: all 0.2s;
+  }
+  .tab:hover { border-color: var(--blue); color: var(--text-primary); }
+  .tab.active { border-color: var(--blue); color: var(--blue); background: rgba(59,130,246,0.1); }
+
+  /* Kategorija kartice */
+  .kat-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    gap: 0.8rem;
+    margin-bottom: 1.5rem;
+  }
+  .kat-card {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 1rem;
+    cursor: pointer;
+    transition: border-color 0.2s, transform 0.1s;
+  }
+  .kat-card:hover { transform: translateY(-2px); }
+  .kat-card.active { border-color: var(--blue); }
+  .kat-card .kat-count {
+    font-size: 2rem;
+    font-weight: 800;
+    line-height: 1;
+  }
+  .kat-card .kat-name {
+    font-size: 0.8rem;
+    color: var(--text-secondary);
+    margin-top: 0.3rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+  .kat-rfq .kat-count { color: var(--blue); }
+  .kat-narocilo .kat-count { color: var(--green); }
+  .kat-sprememba .kat-count { color: var(--yellow); }
+  .kat-dokumentacija .kat-count { color: var(--purple); }
+  .kat-reklamacija .kat-count { color: var(--red); }
+  .kat-total .kat-count { color: var(--cyan); }
+
+  /* Nabiralniki */
+  .mailbox-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+    gap: 1rem;
+    margin-bottom: 1.5rem;
+  }
+  .mailbox-card {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    overflow: hidden;
+  }
+  .mailbox-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0.8rem 1rem;
+    background: rgba(51,65,85,0.5);
+    border-bottom: 1px solid var(--border);
+  }
+  .mailbox-name {
+    font-weight: 700;
+    font-size: 0.9rem;
+  }
+  .mailbox-count {
+    font-size: 0.8rem;
+    color: var(--cyan);
+    font-weight: 700;
+  }
+  .mailbox-cats {
+    display: flex;
+    gap: 0.4rem;
+    padding: 0.5rem 1rem;
+    flex-wrap: wrap;
+  }
+  .cat-badge {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-size: 0.7rem;
+    font-weight: 700;
+  }
+  .cat-RFQ { background: rgba(59,130,246,0.15); color: var(--blue); }
+  .cat-Naročilo, .cat-Narocilo { background: rgba(34,197,94,0.15); color: var(--green); }
+  .cat-Sprememba { background: rgba(234,179,8,0.15); color: var(--yellow); }
+  .cat-Dokumentacija { background: rgba(168,85,247,0.15); color: var(--purple); }
+  .cat-Reklamacija { background: rgba(239,68,68,0.15); color: var(--red); }
+  .cat-Nekategorizirano { background: rgba(100,116,139,0.2); color: var(--text-muted); }
+
+  .mailbox-emails {
+    padding: 0 1rem 0.8rem;
+    max-height: 300px;
+    overflow-y: auto;
+  }
+  .email-item {
+    display: flex;
+    gap: 0.5rem;
+    padding: 0.4rem 0;
+    border-bottom: 1px solid rgba(51,65,85,0.5);
+    font-size: 0.78rem;
+    align-items: flex-start;
+  }
+  .email-item:last-child { border-bottom: none; }
+  .email-id {
+    color: var(--text-muted);
+    font-family: monospace;
+    font-size: 0.72rem;
+    min-width: 32px;
+  }
+  .email-sender {
+    color: var(--cyan);
+    min-width: 120px;
+    max-width: 160px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .email-subject {
+    color: var(--text-primary);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    flex: 1;
+  }
+  .email-status {
+    font-size: 0.85rem;
+    min-width: 20px;
+    text-align: center;
+  }
+
+  /* Povzetek sekcija */
+  .section-title {
+    font-size: 1rem;
+    font-weight: 700;
+    color: var(--text-primary);
+    margin: 1.5rem 0 0.8rem;
+    padding-bottom: 0.5rem;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .loading {
+    text-align: center;
+    padding: 3rem;
+    color: var(--text-muted);
+  }
+  .loading .spinner {
+    display: inline-block;
+    width: 24px; height: 24px;
+    border: 3px solid var(--border);
+    border-top-color: var(--blue);
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+    margin-bottom: 0.5rem;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  .filters {
+    display: flex;
+    gap: 0.8rem;
+    margin-bottom: 1rem;
+    align-items: center;
+  }
+  .filters select {
+    background: var(--bg-secondary);
+    border: 1px solid var(--border);
+    color: var(--text-primary);
+    padding: 0.5rem 0.8rem;
+    border-radius: 8px;
+    font-size: 0.85rem;
+  }
+  .btn {
+    background: var(--blue);
+    color: white;
+    border: none;
+    padding: 0.5rem 1rem;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 0.85rem;
+    font-weight: 600;
+  }
+  .btn:hover { opacity: 0.85; }
+  .timestamp {
+    color: var(--text-muted);
+    font-size: 0.75rem;
+    margin-left: auto;
+  }
+
+  @media (max-width: 768px) {
+    .kat-grid { grid-template-columns: repeat(3, 1fr); }
+    .mailbox-grid { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1>Pregled emailov</h1>
+  <div class="header-links">
+    <a href="/api/system/dashboard">System Monitor</a>
+    <a href="/api/system/dnevnik-ui">Dnevnik napak</a>
+    <a href="/docs">API Docs</a>
+  </div>
+</div>
+
+<!-- Tabs -->
+<div class="tabs">
+  <div class="tab active" onclick="switchTab('dnevno')" id="tab-dnevno">Dnevno porocilo</div>
+  <div class="tab" onclick="switchTab('povzetek')" id="tab-povzetek">Tedenski povzetek</div>
+</div>
+
+<!-- Kategorija kartice -->
+<div class="kat-grid" id="katGrid"></div>
+
+<!-- Filtri -->
+<div class="filters">
+  <select id="dniSelect" onchange="loadData()">
+    <option value="1">Danes</option>
+    <option value="3">Zadnje 3 dni</option>
+    <option value="7" selected>Zadnjih 7 dni</option>
+    <option value="14">Zadnjih 14 dni</option>
+    <option value="30">Zadnjih 30 dni</option>
+  </select>
+  <button class="btn" onclick="loadData()">Osvezi</button>
+  <span class="timestamp" id="updateTime"></span>
+</div>
+
+<!-- Nabiralniki -->
+<div class="section-title" id="sectionTitle">Nabiralniki — danes</div>
+<div id="mainContent">
+  <div class="loading"><div class="spinner"></div><div>Nalagam podatke...</div></div>
+</div>
+
+<script>
+let currentTab = 'dnevno';
+
+function switchTab(tab) {
+  currentTab = tab;
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  document.getElementById('tab-' + tab).classList.add('active');
+
+  const dniSelect = document.getElementById('dniSelect');
+  if (tab === 'dnevno') {
+    dniSelect.value = '1';
+  } else {
+    dniSelect.value = '7';
+  }
+  loadData();
+}
+
+function escapeHtml(text) {
+  const div = document.createElement('div');
+  div.textContent = text || '';
+  return div.innerHTML;
+}
+
+function extractName(sender) {
+  if (!sender) return '?';
+  const match = sender.match(/^([^<]+)</);
+  return match ? match[1].trim() : sender.split('@')[0];
+}
+
+const statusIcons = { 'Nov': '\u{1F195}', 'Prebran': '\u{1F4D6}', 'Dodeljen': '\u{1F4CC}', 'Obdelan': '\u2705' };
+
+async function loadData() {
+  const content = document.getElementById('mainContent');
+  content.innerHTML = '<div class="loading"><div class="spinner"></div><div>Nalagam podatke...</div></div>';
+
+  if (currentTab === 'dnevno') {
+    await loadDnevno();
+  } else {
+    await loadPovzetek();
+  }
+
+  document.getElementById('updateTime').textContent = 'Posodobljeno: ' + new Date().toLocaleTimeString('sl-SI');
+}
+
+async function loadDnevno() {
+  try {
+    const resp = await fetch('/api/system/email-dnevno-porocilo');
+    const data = await resp.json();
+
+    if (!data.success) {
+      document.getElementById('mainContent').innerHTML = '<div class="loading">Napaka pri nalaganju</div>';
+      return;
+    }
+
+    document.getElementById('sectionTitle').textContent =
+      'Nabiralniki — ' + data.datum + ' (' + data.skupaj + ' emailov)';
+
+    // Kategorija kartice iz vseh nabiralnikov
+    const allCats = {};
+    for (const [mb, info] of Object.entries(data.nabiralniki || {})) {
+      for (const [cat, cnt] of Object.entries(info.po_kategorijah || {})) {
+        allCats[cat] = (allCats[cat] || 0) + cnt;
+      }
+    }
+    renderKatGrid(allCats, data.skupaj);
+
+    // Nabiralniki kartice
+    const mailboxes = Object.entries(data.nabiralniki || {})
+      .sort((a, b) => b[1].skupaj - a[1].skupaj);
+
+    if (mailboxes.length === 0) {
+      document.getElementById('mainContent').innerHTML =
+        '<div class="loading">Ni emailov za danes.</div>';
+      return;
+    }
+
+    // Za podrobnosti potrebujemo poln API odgovor - parsamo iz povzetka
+    const povzetekLines = (data.povzetek || '').split('\n');
+    const mailboxEmails = parsePovzetek(povzetekLines);
+
+    let html = '<div class="mailbox-grid">';
+    for (const [mbKey, mbInfo] of mailboxes) {
+      const mbName = mbKey.replace('@luznar.com', '');
+      html += renderMailboxCard(mbKey, mbInfo, mailboxEmails[mbName] || {});
+    }
+    html += '</div>';
+    document.getElementById('mainContent').innerHTML = html;
+
+  } catch (err) {
+    console.error(err);
+    document.getElementById('mainContent').innerHTML = '<div class="loading">Napaka: ' + err.message + '</div>';
+  }
+}
+
+function parsePovzetek(lines) {
+  // Parse povzetek tekst da dobimo emaile po nabiralnikih in kategorijah
+  const result = {};
+  let currentMb = null;
+  let currentCat = null;
+
+  for (const line of lines) {
+    // Nabiralnik header
+    const mbMatch = line.match(/[\u{1F4EC}]\s*(\w+)@luznar\.com/u);
+    if (mbMatch) {
+      currentMb = mbMatch[1].toLowerCase();
+      result[currentMb] = {};
+      currentCat = null;
+      continue;
+    }
+
+    // Kategorija
+    const catMatch = line.match(/^\s{2}(\S+(?:\s\S+)?)\s*\((\d+)\):/);
+    if (catMatch && currentMb) {
+      currentCat = catMatch[1];
+      if (!result[currentMb][currentCat]) result[currentMb][currentCat] = [];
+      continue;
+    }
+
+    // Email vrstica
+    const emailMatch = line.match(/^\s{4}(.+?)\s*\[(\d+)\]\s*(.+?):\s*(.+)$/);
+    if (emailMatch && currentMb && currentCat) {
+      result[currentMb][currentCat].push({
+        status: emailMatch[1].trim(),
+        id: emailMatch[2],
+        sender: emailMatch[3].trim(),
+        subject: emailMatch[4].trim(),
+      });
+    }
+  }
+  return result;
+}
+
+async function loadPovzetek() {
+  const dni = document.getElementById('dniSelect').value;
+  try {
+    const resp = await fetch('/api/system/email-povzetek?dni=' + dni);
+    const data = await resp.json();
+
+    if (!data.success) {
+      document.getElementById('mainContent').innerHTML = '<div class="loading">Napaka pri nalaganju</div>';
+      return;
+    }
+
+    document.getElementById('sectionTitle').textContent =
+      'Povzetek emailov — zadnjih ' + dni + ' dni (' + data.skupaj + ' emailov)';
+
+    renderKatGrid(data.po_kategorijah || {}, data.skupaj);
+
+    // Nabiralniki kot preprosta tabela
+    const mbs = Object.entries(data.po_nabiralnikih || {})
+      .sort((a, b) => b[1] - a[1]);
+
+    let html = '<div class="mailbox-grid">';
+    for (const [mb, cnt] of mbs) {
+      html += `
+        <div class="mailbox-card">
+          <div class="mailbox-header">
+            <span class="mailbox-name">${escapeHtml(mb)}@luznar.com</span>
+            <span class="mailbox-count">${cnt} emailov</span>
+          </div>
+        </div>`;
+    }
+    html += '</div>';
+
+    // Kategorije s primeri
+    html += '<div class="section-title">Primeri po kategorijah</div>';
+    const povzetekLines = (data.povzetek || '').split('\n');
+    let currentCat = null;
+
+    html += '<div style="background:var(--bg-card);border:1px solid var(--border);border-radius:10px;padding:1rem;font-size:0.82rem;">';
+    for (const line of povzetekLines) {
+      if (line.startsWith('  ') && line.includes(' emailov')) {
+        const catMatch = line.match(/^\s{2}(\S+):\s*(\d+)/);
+        if (catMatch) {
+          const catClass = 'cat-' + catMatch[1];
+          html += `<div style="margin-top:0.8rem;font-weight:700;"><span class="cat-badge ${catClass}">${escapeHtml(catMatch[1])}</span> ${catMatch[2]} emailov</div>`;
+        }
+      } else if (line.startsWith('    - [')) {
+        const m = line.match(/\[(\d+)\]\s*(.+?):\s*(.+?)(?:\s*\((.+)\))?$/);
+        if (m) {
+          html += `<div class="email-item">
+            <span class="email-id">#${m[1]}</span>
+            <span class="email-sender" title="${escapeHtml(m[2])}">${escapeHtml(extractName(m[2]))}</span>
+            <span class="email-subject">${escapeHtml(m[3])}</span>
+          </div>`;
+        }
+      }
+    }
+    html += '</div>';
+
+    document.getElementById('mainContent').innerHTML = html;
+
+  } catch (err) {
+    console.error(err);
+    document.getElementById('mainContent').innerHTML = '<div class="loading">Napaka: ' + err.message + '</div>';
+  }
+}
+
+function renderKatGrid(cats, total) {
+  const catColors = {
+    'RFQ': 'kat-rfq', 'Naročilo': 'kat-narocilo', 'Narocilo': 'kat-narocilo',
+    'Sprememba': 'kat-sprememba', 'Dokumentacija': 'kat-dokumentacija',
+    'Reklamacija': 'kat-reklamacija'
+  };
+  const catNames = {
+    'RFQ': 'Povprasevanja', 'Naročilo': 'Narocila', 'Narocilo': 'Narocila',
+    'Sprememba': 'Spremembe', 'Dokumentacija': 'Dokumentacija',
+    'Reklamacija': 'Reklamacije', 'Nekategorizirano': 'Nekategorizirano'
+  };
+
+  let html = `<div class="kat-card kat-total"><div class="kat-count">${total}</div><div class="kat-name">Skupaj</div></div>`;
+
+  const order = ['RFQ', 'Naročilo', 'Narocilo', 'Sprememba', 'Dokumentacija', 'Reklamacija', 'Nekategorizirano'];
+  const seen = new Set();
+
+  for (const cat of order) {
+    if (cats[cat] && !seen.has(catNames[cat])) {
+      seen.add(catNames[cat]);
+      html += `<div class="kat-card ${catColors[cat] || ''}">
+        <div class="kat-count">${cats[cat]}</div>
+        <div class="kat-name">${catNames[cat] || cat}</div>
+      </div>`;
+    }
+  }
+
+  // Preostale
+  for (const [cat, cnt] of Object.entries(cats)) {
+    if (!order.includes(cat)) {
+      html += `<div class="kat-card"><div class="kat-count">${cnt}</div><div class="kat-name">${escapeHtml(cat)}</div></div>`;
+    }
+  }
+
+  document.getElementById('katGrid').innerHTML = html;
+}
+
+function renderMailboxCard(mbKey, mbInfo, emailsByCategory) {
+  const mbName = mbKey.replace('@luznar.com', '').toUpperCase();
+  const cats = mbInfo.po_kategorijah || {};
+
+  let catBadges = '';
+  for (const [cat, cnt] of Object.entries(cats)) {
+    const catClass = 'cat-' + cat;
+    catBadges += `<span class="cat-badge ${catClass}">${escapeHtml(cat)} ${cnt}</span>`;
+  }
+
+  let emailsHtml = '';
+  for (const [cat, emails] of Object.entries(emailsByCategory)) {
+    for (const e of emails) {
+      const icon = e.status || '';
+      emailsHtml += `<div class="email-item">
+        <span class="email-status">${icon}</span>
+        <span class="email-id">#${e.id}</span>
+        <span class="email-sender" title="${escapeHtml(e.sender)}">${escapeHtml(extractName(e.sender))}</span>
+        <span class="email-subject" title="${escapeHtml(e.subject)}">${escapeHtml(e.subject)}</span>
+      </div>`;
+    }
+  }
+
+  return `<div class="mailbox-card">
+    <div class="mailbox-header">
+      <span class="mailbox-name">${mbName}@luznar.com</span>
+      <span class="mailbox-count">${mbInfo.skupaj} emailov</span>
+    </div>
+    <div class="mailbox-cats">${catBadges}</div>
+    ${emailsHtml ? '<div class="mailbox-emails">' + emailsHtml + '</div>' : ''}
+  </div>`;
+}
+
+// Init
+loadData();
+</script>
+</body>
+</html>

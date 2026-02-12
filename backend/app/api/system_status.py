@@ -342,3 +342,29 @@ async def dnevnik_ui():
     """HTML stran za spremljanje napak v slovenščini."""
     template_path = Path(__file__).parent.parent / "templates" / "dnevnik.html"
     return HTMLResponse(content=template_path.read_text(encoding="utf-8"))
+
+
+# ---------------------------------------------------------------------------
+# Email pregled - direktni endpointi (brez LLM)
+# ---------------------------------------------------------------------------
+@router.get("/email-povzetek")
+async def email_povzetek(dni: int = 7, status: str = "Nov"):
+    """Direktni povzetek emailov brez LLM."""
+    from app.agents.tool_executor import get_tool_executor
+    executor = get_tool_executor()
+    return executor._summarize_emails({"days": dni, "status": status})
+
+
+@router.get("/email-dnevno-porocilo")
+async def email_dnevno_porocilo(nabiralnik: str = ""):
+    """Direktno dnevno poročilo po nabiralnikih brez LLM."""
+    from app.agents.tool_executor import get_tool_executor
+    executor = get_tool_executor()
+    return executor._daily_report({"nabiralnik": nabiralnik})
+
+
+@router.get("/email-pregled", response_class=HTMLResponse)
+async def email_pregled_ui():
+    """HTML pregled emailov - direktni prikaz brez LLM."""
+    template_path = Path(__file__).parent.parent / "templates" / "email_pregled.html"
+    return HTMLResponse(content=template_path.read_text(encoding="utf-8"))
