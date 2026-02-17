@@ -63,15 +63,17 @@ services:
     networks:
       - ai-agent-network
 
-  # Flutter Web App (nginx)
+  # Next.js Web App
   web:
     image: ghcr.io/alesluznar1976/ai-agent-web:latest
     build:
-      context: ./flutter_app
-      dockerfile: Dockerfile.web
+      context: ./nextjs-app
+      dockerfile: Dockerfile
     container_name: ai-agent-web
     ports:
-      - "9090:80"
+      - "9090:3000"
+    environment:
+      - NEXT_PUBLIC_API_BASE_URL=http://192.168.0.66:8000/api
     restart: unless-stopped
     networks:
       - ai-agent-network
