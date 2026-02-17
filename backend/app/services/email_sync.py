@@ -13,9 +13,13 @@ from sqlalchemy.orm import Session
 from app.config import get_settings
 from app.crud import emaili as crud_emaili
 from app.agents.email_agent import get_email_agent
+from app.models.email import EmailKategorija
 from app.utils.html_utils import strip_html_to_text
 
 settings = get_settings()
+
+# Samo ti nabiralniki lahko prejmejo RFQ/Naročilo kategorizacijo
+RFQ_ALLOWED_MAILBOXES = {"info@luznar.com", "martina@luznar.com", "spela@luznar.com"}
 
 
 async def get_ms_graph_token() -> Optional[str]:
@@ -201,6 +205,14 @@ async def _sync_one_mailbox(
             body=clean_body,
             attachments=attachment_names,
         )
+
+        # RFQ/Naročilo samo za dovoljene nabiralnike (info, martina, spela)
+        if analysis.kategorija in (EmailKategorija.RFQ, EmailKategorija.NAROCILO):
+            if mailbox.lower() not in RFQ_ALLOWED_MAILBOXES:
+                analysis = analysis.model_copy(update={
+                    "kategorija": EmailKategorija.SPLOSNO,
+                    "rfq_podkategorija": None,
+                })
 
         # Pripravi izvlečene podatke
         izvleceni = {

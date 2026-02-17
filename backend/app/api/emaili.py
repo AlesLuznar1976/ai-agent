@@ -396,6 +396,7 @@ async def recategorize_all_emails(
 ):
     """Re-kategoriziraj vse emaile z LLM (Ollama JSON mode)."""
     from app.agents.email_agent import get_email_agent
+    from app.services.email_sync import RFQ_ALLOWED_MAILBOXES
 
     email_agent = get_email_agent()
     all_emails = crud_emaili.list_emaili(db)
@@ -428,6 +429,14 @@ async def recategorize_all_emails(
                     mailbox = old_izvl.get("mailbox")
                 except (json.JSONDecodeError, TypeError):
                     pass
+
+            # RFQ/Naročilo samo za dovoljene nabiralnike (info, martina, spela)
+            if analysis.kategorija in (EmailKategorija.RFQ, EmailKategorija.NAROCILO):
+                if not mailbox or mailbox.lower() not in RFQ_ALLOWED_MAILBOXES:
+                    analysis = analysis.model_copy(update={
+                        "kategorija": EmailKategorija.SPLOSNO,
+                        "rfq_podkategorija": None,
+                    })
 
             izvleceni = {
                 "kategorija": analysis.kategorija.value,
