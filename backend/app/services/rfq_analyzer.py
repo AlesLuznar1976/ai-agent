@@ -18,6 +18,7 @@ from sqlalchemy.orm import Session
 
 from app.crud import emaili as crud_emaili
 from app.llm import get_llm_router, TaskType
+from app.models.email import RfqPodkategorija
 from app.services.attachment_processor import (
     download_attachment,
     extract_pdf_text,
@@ -195,6 +196,11 @@ Analiziraj naslednje povpraševanje (RFQ email) in iz njega izvleci VSE relevant
 7. Napiši kratek povzetek
 8. Oceni prioriteto (Visoka/Srednja/Nizka)
 9. Predlagaj naslednje korake
+10. Določi RFQ pod-kategorijo:
+    - Kompletno: Ima BOM + Gerber + specifikacije + količino
+    - Nepopolno: Ima nekatere dokumente, a ne vseh
+    - Povpraševanje: Splošno vprašanje brez tehničnih dokumentov
+    - Repeat Order: Ponovitev prejšnjega naročila (ključne besede: ponovitev, repeat, reorder, enako kot)
 
 **PCB specifikacije ki jih tipično potrebujemo:**
 - Material (FR4, Rogers, CEM, ...)
@@ -242,6 +248,7 @@ POMEMBNO: Vrni IZKLJUČNO EN SAM veljaven JSON objekt. Brez razlage, brez markdo
     "manjkajoci_podatki": ["seznam informacij ki manjkajo za ponudbo"],
     "povzetek": "kratek povzetek povpraševanja",
     "prioriteta": "Visoka/Srednja/Nizka",
+    "rfq_podkategorija": "Kompletno/Nepopolno/Povpraševanje/Repeat Order",
     "priporoceni_naslednji_koraki": ["seznam priporočenih korakov"]
 }}"""
 
@@ -311,6 +318,56 @@ async def _run_llm_analysis(prompt: str) -> dict:
             pass
 
     raise ValueError(f"Ni mogoče izvleči JSON iz LLM odgovora: {text[:300]}")
+
+
+# ============================================================
+# RFQ Pod-kategorizacija (Faza 2 - deterministična)
+# ============================================================
+
+def _determine_subcategory(result: dict, email_body: str) -> RfqPodkategorija:
+    """Deterministično določi RFQ pod-kategorijo iz parsiranih prilog in vsebine.
+
+    Faza 2 override: po parsiranju prilog imamo natančnejše podatke kot
+    v Fazi 1 (ki vidi le imena prilog).
+    """
+    body_lower = (email_body or "").lower()
+
+    # Repeat order ključne besede
+    repeat_keywords = [
+        "ponovitev", "repeat", "reorder", "re-order",
+        "enako kot", "isto kot", "ponovi naročilo", "same as before",
+    ]
+    if any(kw in body_lower for kw in repeat_keywords):
+        return RfqPodkategorija.REPEAT_ORDER
+
+    # Preveri parsirane priloge
+    dokumenti = result.get("prilozeni_dokumenti") or []
+    has_bom = any(
+        (d.get("tip") or "").upper() == "BOM"
+        for d in dokumenti if isinstance(d, dict)
+    )
+    has_gerber = any(
+        (d.get("tip") or "").upper() == "GERBER"
+        for d in dokumenti if isinstance(d, dict)
+    )
+    has_spec = any(
+        (d.get("tip") or "").upper() in ("SPECIFIKACIJA", "RISBA")
+        for d in dokumenti if isinstance(d, dict)
+    )
+
+    # Preveri količino v izdelkih
+    izdelki = result.get("izdelki") or []
+    has_quantity = any(
+        i.get("kolicina") is not None
+        for i in izdelki if isinstance(i, dict)
+    )
+
+    if has_bom and has_gerber and has_spec and has_quantity:
+        return RfqPodkategorija.KOMPLETNO
+    elif has_bom or has_gerber or has_spec:
+        return RfqPodkategorija.NEPOPOLNO
+    else:
+        return RfqPodkategorija.POVPRASEVANJE
 
 
 # ============================================================
@@ -406,11 +463,16 @@ async def analyze_rfq_email(db: Session, email_id: int) -> dict:
         prompt = _build_analysis_prompt(email_body, attachment_texts)
         result = await _run_llm_analysis(prompt)
 
-        # Shrani rezultat
+        # Faza 2: Deterministična pod-kategorija (override LLM)
+        rfq_podkat = _determine_subcategory(result, email_body)
+        result["rfq_podkategorija"] = rfq_podkat.value
+
+        # Shrani rezultat + pod-kategorijo
         crud_emaili.update_email(
             db, email_id,
             analiza_status="Končano",
             analiza_rezultat=result,
+            rfq_podkategorija=rfq_podkat.value,
         )
 
         return result

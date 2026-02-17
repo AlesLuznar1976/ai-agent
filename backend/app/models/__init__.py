@@ -22,6 +22,7 @@ from app.models.projekt import (
 )
 from app.models.email import (
     EmailKategorija,
+    RfqPodkategorija,
     EmailStatus,
     EmailBase,
     EmailCreate,
@@ -60,6 +61,7 @@ __all__ = [
     "ProjektCasovnica",
     # Email
     "EmailKategorija",
+    "RfqPodkategorija",
     "EmailStatus",
     "EmailBase",
     "EmailCreate",

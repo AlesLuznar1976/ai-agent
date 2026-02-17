@@ -5,7 +5,7 @@ from datetime import datetime
 from pydantic import BaseModel
 
 from app.llm import get_llm_router, TaskType
-from app.models import EmailKategorija, EmailAnalysis
+from app.models import EmailKategorija, RfqPodkategorija, EmailAnalysis
 
 
 def _extract_json(text: str) -> dict:
@@ -56,6 +56,12 @@ Analiziraj email in ga kategoriziraj.
 - Reklamacija: Pritožba, težava s kvaliteto
 - Splošno: Vse ostalo
 
+**Če je kategorija RFQ, določi tudi pod-kategorijo:**
+- Kompletno: Ima BOM + Gerber + specifikacije + količino. Vse potrebno za pripravo ponudbe.
+- Nepopolno: Ima nekatere dokumente (BOM ali Gerber ali specifikacije), a ne vseh. Potrebna dopolnitev.
+- Povpraševanje: Splošno vprašanje ("ali delate X?", "kakšne so cene za..."), brez tehničnih dokumentov.
+- Repeat Order: Ponovitev prejšnjega naročila. Ključne besede: ponovitev, repeat, reorder, enako kot, isto kot prej, ponovi naročilo, same as before, re-order.
+
 **Email:**
 Od: {sender}
 Zadeva: {subject}
@@ -66,18 +72,20 @@ Priloge: {attachments}
 
 **Naloga:**
 1. Določi kategorijo
-2. Izvleci ključne podatke (stranka, količina, tip projekta, PO številka, verzija, ...)
-3. Predlagaj ali obstaja povezan projekt
-4. Napiši kratek povzetek
+2. Če je RFQ, določi pod-kategorijo (Kompletno/Nepopolno/Povpraševanje/Repeat Order)
+3. Izvleci ključne podatke (stranka, količina, tip projekta, PO številka, verzija, ...)
+4. Predlagaj ali obstaja povezan projekt
+5. Napiši kratek povzetek
 
 Vrni JSON:
 {{
     "kategorija": "RFQ|Naročilo|Sprememba|Dokumentacija|Reklamacija|Splošno",
+    "rfq_podkategorija": "Kompletno|Nepopolno|Povpraševanje|Repeat Order|null",
     "zaupanje": 0.0-1.0,
     "izvleceni_podatki": {{
         "stranka": "...",
         "kolicina": null,
-        "tip_projekta": "...",
+        "tip_projekta": "PCB|SMT|THT|Sestav|null",
         "po_stevilka": null,
         "verzija": null,
         ...
@@ -131,8 +139,19 @@ Vrni JSON:
             except ValueError:
                 kategorija = EmailKategorija.SPLOSNO
 
+            # Parse RFQ pod-kategorija
+            rfq_podkat = None
+            if kategorija == EmailKategorija.RFQ:
+                podkat_str = data.get("rfq_podkategorija")
+                if podkat_str and podkat_str != "null":
+                    try:
+                        rfq_podkat = RfqPodkategorija(podkat_str)
+                    except ValueError:
+                        rfq_podkat = None
+
             return EmailAnalysis(
                 kategorija=kategorija,
+                rfq_podkategorija=rfq_podkat,
                 zaupanje=data.get("zaupanje", 0.5),
                 izvleceni_podatki=data.get("izvleceni_podatki", {}),
                 predlagan_projekt_id=data.get("predlagan_projekt_id"),
@@ -177,11 +196,17 @@ Vrni JSON:
             kategorija = EmailKategorija.SPLOSNO
             zaupanje = 0.4
 
+        # Določi RFQ pod-kategorijo
+        rfq_podkat = None
+        if kategorija == EmailKategorija.RFQ:
+            rfq_podkat = self._determine_simple_rfq_subcategory(combined, attachments)
+
         # Izvleci podatke iz sender
         stranka = sender.split("@")[1].split(".")[0].capitalize() if "@" in sender else ""
 
         return EmailAnalysis(
             kategorija=kategorija,
+            rfq_podkategorija=rfq_podkat,
             zaupanje=zaupanje,
             izvleceni_podatki={
                 "stranka": stranka,
@@ -190,6 +215,43 @@ Vrni JSON:
             predlagan_projekt_id=None,
             povzetek=f"Email od {sender}: {subject[:50]}..."
         )
+
+    @staticmethod
+    def _determine_simple_rfq_subcategory(
+        combined_text: str,
+        attachments: list[str] = None,
+    ) -> RfqPodkategorija:
+        """Deterministična določitev RFQ pod-kategorije iz imen prilog in besedila."""
+        att_lower = [a.lower() for a in (attachments or [])]
+
+        # Repeat order ključne besede
+        repeat_keywords = [
+            "ponovitev", "repeat", "reorder", "re-order",
+            "enako kot", "isto kot", "ponovi naročilo", "same as before",
+        ]
+        if any(kw in combined_text for kw in repeat_keywords):
+            return RfqPodkategorija.REPEAT_ORDER
+
+        # Preveri priloge
+        has_bom = any(
+            ("bom" in a) and any(a.endswith(ext) for ext in (".xlsx", ".xls", ".csv"))
+            for a in att_lower
+        )
+        has_gerber = any(
+            ("gerber" in a) and a.endswith(".zip")
+            for a in att_lower
+        )
+        has_spec = any(
+            a.endswith(".pdf") or a.endswith(".docx")
+            for a in att_lower
+        )
+
+        if has_bom and has_gerber and has_spec:
+            return RfqPodkategorija.KOMPLETNO
+        elif has_bom or has_gerber or has_spec:
+            return RfqPodkategorija.NEPOPOLNO
+        else:
+            return RfqPodkategorija.POVPRASEVANJE
 
     RESPONSE_TYPE_INSTRUCTIONS = {
         "acknowledge": "Potrdi prejem emaila. Stranki sporoči da smo prejeli njihovo sporočilo in bomo odgovorili v najkrajšem času.",

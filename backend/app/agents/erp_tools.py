@@ -404,6 +404,11 @@ READ_TOOLS = [
                         "description": "Filtriraj po poslovni kategoriji emaila. Ne nastavljaj za vse emaile.",
                         "enum": ["RFQ", "Naročilo", "Sprememba", "Dokumentacija", "Reklamacija"]
                     },
+                    "rfq_podkategorija": {
+                        "type": "string",
+                        "description": "Filtriraj RFQ emaile po pod-kategoriji. Relevantno samo ko je kategorija=RFQ.",
+                        "enum": ["Kompletno", "Nepopolno", "Povpraševanje", "Repeat Order"]
+                    },
                     "status": {
                         "type": "string",
                         "description": "Filtriraj po statusu (privzeto Nov)",
@@ -780,6 +785,27 @@ ESCALATION_TOOLS = [
                     "context": {
                         "type": "string",
                         "description": "Dodatni kontekst (katere tabele so relevantne, kaj uporabnik želi, itd.)"
+                    }
+                },
+                "required": ["task_description"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "ask_claude_for_analysis",
+            "description": "Pokliči Claude za podatkovno analizo s Python skripto. Claude napiše Python kodo ki poizveduje ERP bazo in naredi analizo (agregacije, trendi, primerjave, statistike). Uporabi za: mesečne trende, primerjave partnerjev, analizo prodaje, statistike naročil, TOP stranke, itd.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "task_description": {
+                        "type": "string",
+                        "description": "Opis analize (natančno navedi tabele, obdobje, metrike)"
+                    },
+                    "context": {
+                        "type": "string",
+                        "description": "Dodatni kontekst - podatki ki jih že imaš"
                     }
                 },
                 "required": ["task_description"]

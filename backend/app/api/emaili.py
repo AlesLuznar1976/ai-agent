@@ -8,7 +8,7 @@ import os
 from app.auth import get_current_user, require_permission
 from app.models import (
     TokenData, Permission,
-    Email, EmailUpdate, EmailKategorija, EmailStatus
+    Email, EmailUpdate, EmailKategorija, RfqPodkategorija, EmailStatus
 )
 from app.config import get_settings
 from app.database import get_db
@@ -51,6 +51,7 @@ def db_email_to_response(db_email) -> dict:
         "prejemniki": db_email.prejemniki,
         "telo": db_email.telo,
         "kategorija": db_email.kategorija,
+        "rfq_podkategorija": db_email.rfq_podkategorija,
         "status": db_email.status,
         "datum": db_email.datum.isoformat() if db_email.datum else None,
         "izvleceni_podatki": izvleceni,
@@ -63,6 +64,7 @@ def db_email_to_response(db_email) -> dict:
 @router.get("")
 async def list_emaili(
     kategorija: Optional[EmailKategorija] = None,
+    rfq_podkategorija: Optional[RfqPodkategorija] = None,
     status: Optional[EmailStatus] = None,
     projekt_id: Optional[int] = None,
     current_user: TokenData = Depends(require_permission(Permission.EMAIL_VIEW)),
@@ -75,6 +77,7 @@ async def list_emaili(
         kategorija=kategorija.value if kategorija else None,
         status=status.value if status else None,
         projekt_id=projekt_id,
+        rfq_podkategorija=rfq_podkategorija.value if rfq_podkategorija else None,
     )
 
     emaili = [db_email_to_response(e) for e in db_emaili]
@@ -317,6 +320,8 @@ async def update_email(
         update_data["kategorija"] = update_data["kategorija"].value
     if "status" in update_data and update_data["status"]:
         update_data["status"] = update_data["status"].value
+    if "rfq_podkategorija" in update_data and update_data["rfq_podkategorija"]:
+        update_data["rfq_podkategorija"] = update_data["rfq_podkategorija"].value
 
     db_email = crud_emaili.update_email(db, email_id, **update_data)
 
@@ -434,11 +439,19 @@ async def recategorize_all_emails(
             if mailbox:
                 izvleceni["mailbox"] = mailbox
 
-            crud_emaili.update_email(
-                db, db_email.id,
+            update_kwargs = dict(
                 kategorija=analysis.kategorija.value,
                 izvleceni_podatki=izvleceni,
             )
+            if analysis.rfq_podkategorija:
+                update_kwargs["rfq_podkategorija"] = analysis.rfq_podkategorija.value
+            crud_emaili.update_email(db, db_email.id, **update_kwargs)
+
+            # Počisti pod-kategorijo za ne-RFQ emaile (update_email preskoči None vrednosti)
+            if not analysis.rfq_podkategorija and db_email.rfq_podkategorija:
+                db_email.rfq_podkategorija = None
+                db.commit()
+
             updated += 1
 
         except Exception as e:

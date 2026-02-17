@@ -22,6 +22,7 @@ class DBEmail(Base):
     datum = Column(DateTime, nullable=False)
     izvleceni_podatki = Column(Text, nullable=True)  # JSON string
     priloge = Column(Text, nullable=True)  # JSON string
+    rfq_podkategorija = Column(String(50), nullable=True)   # Kompletno, Nepopolno, Povpraševanje, Repeat Order
     analiza_status = Column(String(50), nullable=True)    # NULL, Čaka, V obdelavi, Končano, Napaka
     analiza_rezultat = Column(Text, nullable=True)         # JSON
 

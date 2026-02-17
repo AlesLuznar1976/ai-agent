@@ -151,11 +151,13 @@ class ApiService {
   /// Seznam emailov
   Future<List<Email>> getEmaili({
     String? kategorija,
+    String? rfqPodkategorija,
     String? analizaStatus,
   }) async {
     var url = '${AppConfig.apiBaseUrl}/emaili?';
 
     if (kategorija != null) url += 'kategorija=$kategorija&';
+    if (rfqPodkategorija != null) url += 'rfq_podkategorija=${Uri.encodeComponent(rfqPodkategorija)}&';
 
     final response = await http.get(
       Uri.parse(url),

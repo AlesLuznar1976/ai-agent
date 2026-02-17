@@ -177,6 +177,18 @@ class ToolExecutor:
         except (ValueError, TypeError):
             return default
 
+    @staticmethod
+    def _get_date_from(args: dict) -> str | None:
+        """Ekstrahiraj date_from iz args (LLM pošilja različne ključe)."""
+        return (args.get("date_from") or args.get("datum_od") or args.get("datum_from")
+                or args.get("start_date") or args.get("od") or args.get("from_date") or None)
+
+    @staticmethod
+    def _get_date_to(args: dict) -> str | None:
+        """Ekstrahiraj date_to iz args (LLM pošilja različne ključe)."""
+        return (args.get("date_to") or args.get("datum_do") or args.get("datum_to")
+                or args.get("end_date") or args.get("do") or args.get("to_date") or None)
+
     def _execute_read_tool(self, tool_name: str, args: dict) -> dict:
         """Izvede bralni tool."""
 
@@ -318,12 +330,15 @@ class ToolExecutor:
         if args.get("modul"):
             conditions.append("n.NaModul = ?")
             params.append(args["modul"])
-        if args.get("date_from"):
+        # LLM včasih pošlje drug ključ za datume
+        date_from = self._get_date_from(args)
+        date_to = self._get_date_to(args)
+        if date_from:
             conditions.append("n.NaDatNar >= ?")
-            params.append(args["date_from"])
-        if args.get("date_to"):
+            params.append(date_from)
+        if date_to:
             conditions.append("n.NaDatNar <= ?")
-            params.append(args["date_to"])
+            params.append(date_to)
 
         where = " AND ".join(conditions)
 
@@ -353,12 +368,14 @@ class ToolExecutor:
         if args.get("status"):
             conditions.append("pon.PonStatus = ?")
             params.append(args["status"])
-        if args.get("date_from"):
+        date_from = self._get_date_from(args)
+        date_to = self._get_date_to(args)
+        if date_from:
             conditions.append("pon.PonDatPon >= ?")
-            params.append(args["date_from"])
-        if args.get("date_to"):
+            params.append(date_from)
+        if date_to:
             conditions.append("pon.PonDatPon <= ?")
-            params.append(args["date_to"])
+            params.append(date_to)
 
         where = " AND ".join(conditions)
 
@@ -382,12 +399,14 @@ class ToolExecutor:
         if args.get("partner_id"):
             conditions.append("d.DNsPartPlac = ?")
             params.append(args["partner_id"])
-        if args.get("date_from"):
+        date_from = self._get_date_from(args)
+        date_to = self._get_date_to(args)
+        if date_from:
             conditions.append("d.DNsDatDNs >= ?")
-            params.append(args["date_from"])
-        if args.get("date_to"):
+            params.append(date_from)
+        if date_to:
             conditions.append("d.DNsDatDNs <= ?")
-            params.append(args["date_to"])
+            params.append(date_to)
 
         where = " AND ".join(conditions)
 
@@ -411,12 +430,14 @@ class ToolExecutor:
         if args.get("partner_id"):
             conditions.append("f.FaPartPlac = ?")
             params.append(args["partner_id"])
-        if args.get("date_from"):
+        date_from = self._get_date_from(args)
+        date_to = self._get_date_to(args)
+        if date_from:
             conditions.append("f.Datum >= ?")
-            params.append(args["date_from"])
-        if args.get("date_to"):
+            params.append(date_from)
+        if date_to:
             conditions.append("f.Datum <= ?")
-            params.append(args["date_to"])
+            params.append(date_to)
 
         where = " AND ".join(conditions)
 
@@ -536,12 +557,14 @@ class ToolExecutor:
         if args.get("work_order_id"):
             conditions.append("PDNStDNs = ?")
             params.append(args["work_order_id"])
-        if args.get("date_from"):
+        date_from = self._get_date_from(args)
+        date_to = self._get_date_to(args)
+        if date_from:
             conditions.append("Datum >= ?")
-            params.append(args["date_from"])
-        if args.get("date_to"):
+            params.append(date_from)
+        if date_to:
             conditions.append("Datum <= ?")
-            params.append(args["date_to"])
+            params.append(date_to)
 
         where = " AND ".join(conditions)
 
@@ -616,10 +639,17 @@ class ToolExecutor:
             conditions.append("projekt_id = ?")
             params.append(args["projekt_id"])
 
+        # RFQ pod-kategorija filter
+        VALID_RFQ_SUBCATEGORIES = {"Kompletno", "Nepopolno", "Povpraševanje", "Repeat Order"}
+        raw_podkat = (args.get("rfq_podkategorija") or "").strip()
+        if raw_podkat and raw_podkat in VALID_RFQ_SUBCATEGORIES:
+            conditions.append("rfq_podkategorija = ?")
+            params.append(raw_podkat)
+
         where = " AND ".join(conditions) if conditions else "1=1"
 
         rows = self._execute_select(
-            f"""SELECT TOP (?) id, zadeva, posiljatelj, prejemniki, kategorija, status, datum, projekt_id
+            f"""SELECT TOP (?) id, zadeva, posiljatelj, prejemniki, kategorija, rfq_podkategorija, status, datum, projekt_id
                 FROM ai_agent.Emaili WHERE {where} ORDER BY datum DESC""",
             tuple([limit] + params)
         )
@@ -651,7 +681,7 @@ class ToolExecutor:
 
         # Pridobi emaile
         rows = self._execute_select(
-            f"""SELECT id, zadeva, posiljatelj, kategorija, status, datum, prejemniki
+            f"""SELECT id, zadeva, posiljatelj, kategorija, rfq_podkategorija, status, datum, prejemniki
                 FROM ai_agent.Emaili WHERE {where} ORDER BY datum DESC""",
             tuple(params)
         )
@@ -665,10 +695,14 @@ class ToolExecutor:
                 "po_nabiralnikih": {}
             }
 
-        # Grupiraj po kategorijah
+        # Grupiraj po kategorijah (RFQ prikaže pod-kategorijo)
         po_kategorijah = {}
         for r in rows:
             kat = r.get("kategorija", "Nekategorizirano") or "Nekategorizirano"
+            # Za RFQ prikaži pod-kategorijo v imenu skupine
+            podkat = r.get("rfq_podkategorija")
+            if kat == "RFQ" and podkat:
+                kat = f"RFQ - {podkat}"
             if kat not in po_kategorijah:
                 po_kategorijah[kat] = {"stevilo": 0, "emaili": []}
             po_kategorijah[kat]["stevilo"] += 1
@@ -734,7 +768,7 @@ class ToolExecutor:
 
         where = " AND ".join(conditions)
         rows = self._execute_select(
-            f"""SELECT id, zadeva, posiljatelj, prejemniki, kategorija, status, datum
+            f"""SELECT id, zadeva, posiljatelj, prejemniki, kategorija, rfq_podkategorija, status, datum
                 FROM ai_agent.Emaili WHERE {where} ORDER BY datum DESC""",
             tuple(params)
         )
@@ -759,10 +793,13 @@ class ToolExecutor:
             if not mb_rows:
                 continue
 
-            # Grupiraj po kategorijah
+            # Grupiraj po kategorijah (RFQ prikaže pod-kategorijo)
             po_kat = {}
             for r in mb_rows:
                 kat = r.get("kategorija", "Nekategorizirano") or "Nekategorizirano"
+                podkat = r.get("rfq_podkategorija")
+                if kat == "RFQ" and podkat:
+                    kat = f"RFQ - {podkat}"
                 if kat not in po_kat:
                     po_kat[kat] = []
                 po_kat[kat].append({
@@ -1192,18 +1229,21 @@ class ToolExecutor:
         # Posodobi v bazi
         izvleceni = {
             "kategorija": analysis.kategorija.value,
+            "rfq_podkategorija": analysis.rfq_podkategorija.value if analysis.rfq_podkategorija else None,
             "zaupanje": analysis.zaupanje,
             "povzetek": analysis.povzetek,
             "predlagan_projekt_id": analysis.predlagan_projekt_id,
             **analysis.izvleceni_podatki,
         }
 
+        rfq_podkat_value = analysis.rfq_podkategorija.value if analysis.rfq_podkategorija else None
+
         conn = self._get_connection()
         try:
             cursor = conn.cursor()
             cursor.execute(
-                "UPDATE ai_agent.Emaili SET kategorija = ?, izvleceni_podatki = ? WHERE id = ?",
-                (analysis.kategorija.value, json.dumps(izvleceni, ensure_ascii=False), email_id)
+                "UPDATE ai_agent.Emaili SET kategorija = ?, rfq_podkategorija = ?, izvleceni_podatki = ? WHERE id = ?",
+                (analysis.kategorija.value, rfq_podkat_value, json.dumps(izvleceni, ensure_ascii=False), email_id)
             )
             conn.commit()
         finally:
@@ -1214,6 +1254,7 @@ class ToolExecutor:
             "data": {
                 "email_id": email_id,
                 "kategorija": analysis.kategorija.value,
+                "rfq_podkategorija": rfq_podkat_value,
                 "zaupanje": analysis.zaupanje,
                 "povzetek": analysis.povzetek,
                 "izvleceni_podatki": analysis.izvleceni_podatki,
@@ -1301,16 +1342,54 @@ class ToolExecutor:
     # ESCALATION
     # ============================================================
 
+    def _execute_select_safe(self, query: str) -> list[dict]:
+        """
+        Izvede SELECT poizvedbo z varnostnimi kontrolami.
+
+        Uporablja se kot query funkcija za PythonExecutor.
+        Reuse varnostnih kontrol iz _run_custom_query.
+        """
+        query = query.strip()
+
+        # Mora biti SELECT
+        if not query.upper().startswith("SELECT"):
+            raise ValueError("Samo SELECT poizvedbe so dovoljene")
+
+        # Prepovedane operacije
+        dangerous = [
+            "DROP", "DELETE", "UPDATE", "INSERT", "ALTER",
+            "EXEC", "EXECUTE", "TRUNCATE", "CREATE"
+        ]
+        query_upper = query.upper()
+        for kw in dangerous:
+            if re.search(rf'\b{kw}\b', query_upper):
+                raise ValueError(f"Nevarna operacija: {kw} ni dovoljena")
+
+        # Dodaj TOP omejitev če ni prisotna
+        if "TOP" not in query_upper:
+            query = query.replace("SELECT", "SELECT TOP 1000", 1)
+
+        return self._execute_select(query)
+
     async def _execute_escalation(self, tool_name: str, args: dict) -> dict:
         """Posreduj Claude-u za pisanje skript."""
         from app.agents.claude_scriptwriter import get_scriptwriter
 
         writer = get_scriptwriter()
-        result = await writer.write_and_execute(
-            task_description=args["task_description"],
-            context=args.get("context", ""),
-            executor=self
-        )
+
+        if tool_name == "ask_claude_for_analysis":
+            result = await writer.write_and_execute_python(
+                task_description=args["task_description"],
+                context=args.get("context", ""),
+                executor=self
+            )
+        else:
+            # ask_claude_for_script (SQL)
+            result = await writer.write_and_execute(
+                task_description=args["task_description"],
+                context=args.get("context", ""),
+                executor=self
+            )
         return result
 
     # ============================================================

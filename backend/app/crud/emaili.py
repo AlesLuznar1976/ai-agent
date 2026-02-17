@@ -30,6 +30,7 @@ def list_emaili(
     kategorija: Optional[str] = None,
     status: Optional[str] = None,
     projekt_id: Optional[int] = None,
+    rfq_podkategorija: Optional[str] = None,
 ) -> list[DBEmail]:
     """Seznam emailov s filtri"""
     query = db.query(DBEmail)
@@ -40,6 +41,8 @@ def list_emaili(
         query = query.filter(DBEmail.status == status)
     if projekt_id:
         query = query.filter(DBEmail.projekt_id == projekt_id)
+    if rfq_podkategorija:
+        query = query.filter(DBEmail.rfq_podkategorija == rfq_podkategorija)
 
     return query.order_by(desc(DBEmail.datum)).all()
 

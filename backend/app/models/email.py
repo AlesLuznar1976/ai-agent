@@ -13,6 +13,13 @@ class EmailKategorija(str, Enum):
     SPLOSNO = "Splošno"
 
 
+class RfqPodkategorija(str, Enum):
+    KOMPLETNO = "Kompletno"
+    NEPOPOLNO = "Nepopolno"
+    POVPRASEVANJE = "Povpraševanje"
+    REPEAT_ORDER = "Repeat Order"
+
+
 class EmailStatus(str, Enum):
     NOV = "Nov"
     PREBRAN = "Prebran"
@@ -37,6 +44,7 @@ class EmailUpdate(BaseModel):
     projekt_id: Optional[int] = None
     kategorija: Optional[EmailKategorija] = None
     status: Optional[EmailStatus] = None
+    rfq_podkategorija: Optional[RfqPodkategorija] = None
 
 
 class Email(EmailBase):
@@ -44,6 +52,7 @@ class Email(EmailBase):
     outlook_id: str
     projekt_id: Optional[int] = None
     kategorija: EmailKategorija
+    rfq_podkategorija: Optional[RfqPodkategorija] = None
     status: EmailStatus = EmailStatus.NOV
     datum: datetime
     izvleceni_podatki: Optional[dict] = None
@@ -58,6 +67,7 @@ class Email(EmailBase):
 class EmailAnalysis(BaseModel):
     """Rezultat LLM analize emaila"""
     kategorija: EmailKategorija
+    rfq_podkategorija: Optional[RfqPodkategorija] = None
     zaupanje: float  # 0-1
     izvleceni_podatki: dict
     predlagan_projekt_id: Optional[int] = None

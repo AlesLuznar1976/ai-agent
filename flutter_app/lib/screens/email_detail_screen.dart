@@ -40,6 +40,7 @@ class _EmailDetailScreenState extends State<EmailDetailScreen> {
           posiljatelj: _email.posiljatelj,
           prejemniki: _email.prejemniki,
           kategorija: _email.kategorija,
+          rfqPodkategorija: _email.rfqPodkategorija,
           status: _email.status,
           datum: _email.datum,
           analizaStatus: data['analiza_status'] ?? _email.analizaStatus,
@@ -69,6 +70,7 @@ class _EmailDetailScreenState extends State<EmailDetailScreen> {
           posiljatelj: _email.posiljatelj,
           prejemniki: _email.prejemniki,
           kategorija: _email.kategorija,
+          rfqPodkategorija: _email.rfqPodkategorija,
           status: _email.status,
           datum: _email.datum,
           analizaStatus: data['analiza_status'] ?? 'Končano',
@@ -106,6 +108,21 @@ class _EmailDetailScreenState extends State<EmailDetailScreen> {
         return LuznarBrand.warning;
       case 'Napaka':
         return LuznarBrand.error;
+      default:
+        return LuznarBrand.textMuted;
+    }
+  }
+
+  Color _rfqPodkategorijaColor(String? podkat) {
+    switch (podkat) {
+      case 'Kompletno':
+        return LuznarBrand.success;
+      case 'Nepopolno':
+        return LuznarBrand.warning;
+      case 'Povpraševanje':
+        return LuznarBrand.info;
+      case 'Repeat Order':
+        return const Color(0xFF7C3AED); // vijolična
       default:
         return LuznarBrand.textMuted;
     }
@@ -211,7 +228,7 @@ class _EmailDetailScreenState extends State<EmailDetailScreen> {
               ),
             const SizedBox(height: 8),
 
-            // Kategorija + Status
+            // Kategorija + Pod-kategorija + Status
             Row(
               children: [
                 if (_email.kategorija != null) ...[
@@ -229,6 +246,28 @@ class _EmailDetailScreenState extends State<EmailDetailScreen> {
                         fontSize: 12,
                         color: LuznarBrand.textSecondary,
                         fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                ],
+                if (_email.rfqPodkategorija != null) ...[
+                  Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: _rfqPodkategorijaColor(_email.rfqPodkategorija)
+                          .withValues(alpha: 0.08),
+                      borderRadius:
+                          BorderRadius.circular(LuznarBrand.radiusXLarge),
+                    ),
+                    child: Text(
+                      _email.rfqPodkategorija!,
+                      style: TextStyle(
+                        color: _rfqPodkategorijaColor(
+                            _email.rfqPodkategorija),
+                        fontWeight: FontWeight.w600,
+                        fontSize: 12,
                       ),
                     ),
                   ),

@@ -205,6 +205,7 @@ async def _sync_one_mailbox(
         # Pripravi izvlečene podatke
         izvleceni = {
             "kategorija": analysis.kategorija.value,
+            "rfq_podkategorija": analysis.rfq_podkategorija.value if analysis.rfq_podkategorija else None,
             "zaupanje": analysis.zaupanje,
             "povzetek": analysis.povzetek,
             "predlagan_projekt_id": analysis.predlagan_projekt_id,
@@ -230,6 +231,13 @@ async def _sync_one_mailbox(
             izvleceni_podatki=izvleceni,
             priloge=priloge_meta,
         )
+
+        # Shrani RFQ pod-kategorijo
+        if analysis.rfq_podkategorija:
+            crud_emaili.update_email(
+                db, db_email.id,
+                rfq_podkategorija=analysis.rfq_podkategorija.value,
+            )
 
         # Če je RFQ/Naročilo, označi za analizo
         if analysis.kategorija.value in ("RFQ", "Naročilo"):
@@ -283,6 +291,7 @@ def _db_email_to_dict(db_email) -> dict:
         "prejemniki": db_email.prejemniki,
         "telo": db_email.telo,
         "kategorija": db_email.kategorija,
+        "rfq_podkategorija": db_email.rfq_podkategorija,
         "status": db_email.status,
         "datum": db_email.datum.isoformat() if db_email.datum else None,
         "izvleceni_podatki": izvleceni,

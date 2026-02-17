@@ -5,6 +5,7 @@ class Email {
   final String? posiljatelj;
   final String? prejemniki;
   final String? kategorija;
+  final String? rfqPodkategorija;
   final String? status;
   final DateTime? datum;
   final String? analizaStatus;
@@ -18,6 +19,7 @@ class Email {
     this.posiljatelj,
     this.prejemniki,
     this.kategorija,
+    this.rfqPodkategorija,
     this.status,
     this.datum,
     this.analizaStatus,
@@ -33,6 +35,7 @@ class Email {
       posiljatelj: json['posiljatelj'],
       prejemniki: json['prejemniki'],
       kategorija: json['kategorija'],
+      rfqPodkategorija: json['rfq_podkategorija'],
       status: json['status'],
       datum: json['datum'] != null ? DateTime.parse(json['datum']) : null,
       analizaStatus: json['analiza_status'],
@@ -53,4 +56,12 @@ class Email {
 
   /// Število prilog
   int get steviloPrilog => priloge?.length ?? 0;
+
+  /// Prikaz kategorije z pod-kategorijo za RFQ
+  String get kategorijaDisplay {
+    if (kategorija == 'RFQ' && rfqPodkategorija != null) {
+      return 'RFQ - $rfqPodkategorija';
+    }
+    return kategorija ?? '';
+  }
 }

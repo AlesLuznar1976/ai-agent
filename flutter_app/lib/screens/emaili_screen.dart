@@ -20,6 +20,7 @@ class _EmailiScreenState extends State<EmailiScreen> {
   bool _isLoading = true;
   String? _selectedStatus;
   String? _selectedMailbox;
+  String? _selectedRfqPodkategorija;
   String? _error;
 
   final List<String> _statusi = [
@@ -29,6 +30,14 @@ class _EmailiScreenState extends State<EmailiScreen> {
     'V obdelavi',
     'Napaka',
     'Brez',
+  ];
+
+  final List<String> _rfqPodkategorije = [
+    'Vse RFQ',
+    'Kompletno',
+    'Nepopolno',
+    'Povpraševanje',
+    'Repeat Order',
   ];
 
   final List<String> _predali = [
@@ -96,7 +105,30 @@ class _EmailiScreenState extends State<EmailiScreen> {
       }).toList();
     }
 
+    // Filter by RFQ pod-kategorija
+    final rfqPodkat = _selectedRfqPodkategorija;
+    if (rfqPodkat != null && rfqPodkat != 'Vse RFQ') {
+      filtered = filtered
+          .where((e) => e.kategorija == 'RFQ' && e.rfqPodkategorija == rfqPodkat)
+          .toList();
+    }
+
     _emaili = filtered;
+  }
+
+  Color _rfqPodkategorijaColor(String? podkat) {
+    switch (podkat) {
+      case 'Kompletno':
+        return LuznarBrand.success;
+      case 'Nepopolno':
+        return LuznarBrand.warning;
+      case 'Povpraševanje':
+        return LuznarBrand.info;
+      case 'Repeat Order':
+        return const Color(0xFF7C3AED); // vijolična
+      default:
+        return LuznarBrand.textMuted;
+    }
   }
 
   Color _statusColor(String? status) {
@@ -238,6 +270,70 @@ class _EmailiScreenState extends State<EmailiScreen> {
           ),
 
           Divider(height: 1, color: LuznarBrand.navy.withValues(alpha: 0.06)),
+
+          // RFQ pod-kategorija filter bar (prikaži samo ko so RFQ emaili)
+          if (_vsiEmaili.any((e) => e.kategorija == 'RFQ'))
+            Container(
+              height: 46,
+              padding: const EdgeInsets.symmetric(horizontal: 12),
+              color: LuznarBrand.surfaceWhite,
+              child: ListView.builder(
+                scrollDirection: Axis.horizontal,
+                itemCount: _rfqPodkategorije.length,
+                itemBuilder: (context, index) {
+                  final podkat = _rfqPodkategorije[index];
+                  final isSelected =
+                      (_selectedRfqPodkategorija ?? 'Vse RFQ') == podkat;
+                  final chipColor = podkat == 'Vse RFQ'
+                      ? LuznarBrand.navy
+                      : _rfqPodkategorijaColor(podkat);
+
+                  return Padding(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 3, vertical: 6),
+                    child: FilterChip(
+                      label: Text(
+                        podkat,
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: isSelected
+                              ? FontWeight.w600
+                              : FontWeight.w400,
+                          color: isSelected
+                              ? chipColor
+                              : LuznarBrand.textSecondary,
+                        ),
+                      ),
+                      selected: isSelected,
+                      selectedColor: chipColor.withValues(alpha: 0.1),
+                      backgroundColor: LuznarBrand.surfaceWhite,
+                      checkmarkColor: chipColor,
+                      side: BorderSide(
+                        color: isSelected
+                            ? chipColor.withValues(alpha: 0.3)
+                            : LuznarBrand.navy.withValues(alpha: 0.1),
+                      ),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(
+                            LuznarBrand.radiusXLarge),
+                      ),
+                      onSelected: (selected) {
+                        setState(() {
+                          _selectedRfqPodkategorija =
+                              selected ? podkat : null;
+                          _applyFilters();
+                        });
+                      },
+                    ),
+                  );
+                },
+              ),
+            ),
+
+          if (_vsiEmaili.any((e) => e.kategorija == 'RFQ'))
+            Divider(
+                height: 1,
+                color: LuznarBrand.navy.withValues(alpha: 0.06)),
 
           // Email list
           Expanded(
@@ -411,6 +507,30 @@ class _EmailiScreenState extends State<EmailiScreen> {
                           fontSize: 11,
                           color: LuznarBrand.textSecondary,
                           fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ),
+                  ],
+                  if (email.rfqPodkategorija != null) ...[
+                    const SizedBox(width: 6),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 2,
+                      ),
+                      decoration: BoxDecoration(
+                        color: _rfqPodkategorijaColor(email.rfqPodkategorija)
+                            .withValues(alpha: 0.08),
+                        borderRadius:
+                            BorderRadius.circular(LuznarBrand.radiusXLarge),
+                      ),
+                      child: Text(
+                        email.rfqPodkategorija!,
+                        style: TextStyle(
+                          fontSize: 11,
+                          color: _rfqPodkategorijaColor(
+                              email.rfqPodkategorija),
+                          fontWeight: FontWeight.w600,
                         ),
                       ),
                     ),
