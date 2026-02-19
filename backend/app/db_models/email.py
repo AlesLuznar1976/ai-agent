@@ -1,8 +1,5 @@
-"""SQLAlchemy model za ai_agent.Emaili tabelo"""
-
 from sqlalchemy import Column, Integer, String, DateTime, ForeignKey, Text
 from sqlalchemy.orm import relationship
-
 from app.database import Base
 
 
@@ -17,14 +14,13 @@ class DBEmail(Base):
     posiljatelj = Column(String(255), nullable=False)
     prejemniki = Column(Text, nullable=True)
     telo = Column(Text, nullable=True)
-    kategorija = Column(String(50), nullable=False, default="Splošno")
+    kategorija = Column(String(50), nullable=False, default="Splosno")
     status = Column(String(50), nullable=False, default="Nov")
     datum = Column(DateTime, nullable=False)
-    izvleceni_podatki = Column(Text, nullable=True)  # JSON string
-    priloge = Column(Text, nullable=True)  # JSON string
-    rfq_podkategorija = Column(String(50), nullable=True)   # Kompletno, Nepopolno, Povpraševanje, Repeat Order
-    analiza_status = Column(String(50), nullable=True)    # NULL, Čaka, V obdelavi, Končano, Napaka
-    analiza_rezultat = Column(Text, nullable=True)         # JSON
+    rfq_podkategorija = Column(String(50), nullable=True)
+    izvleceni_podatki = Column(Text, nullable=True)
+    priloge = Column(Text, nullable=True)
+    analiza_status = Column(String(50), nullable=True)
+    analiza_rezultat = Column(Text, nullable=True)
 
-    # Relationships
     projekt = relationship("DBProjekt", back_populates="emaili")
