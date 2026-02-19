@@ -21,6 +21,9 @@ settings = get_settings()
 # Samo ti nabiralniki lahko prejmejo RFQ/Naročilo kategorizacijo
 RFQ_ALLOWED_MAILBOXES = {"info@luznar.com", "martina@luznar.com", "spela@luznar.com"}
 
+# Domene pošiljateljev, ki jih izločimo iz RFQ/Naročilo analize
+EXCLUDED_SENDER_DOMAINS = {"calcuquote.com"}
+
 
 async def get_ms_graph_token() -> Optional[str]:
     """Pridobi MS Graph access token."""
@@ -209,6 +212,15 @@ async def _sync_one_mailbox(
         # RFQ/Naročilo samo za dovoljene nabiralnike (info, martina, spela)
         if analysis.kategorija in (EmailKategorija.RFQ, EmailKategorija.NAROCILO):
             if mailbox.lower() not in RFQ_ALLOWED_MAILBOXES:
+                analysis = analysis.model_copy(update={
+                    "kategorija": EmailKategorija.SPLOSNO,
+                    "rfq_podkategorija": None,
+                })
+
+        # Izloči pošiljatelje iz izključenih domen (npr. calcuquote.com)
+        if analysis.kategorija in (EmailKategorija.RFQ, EmailKategorija.NAROCILO):
+            sender_domain = from_addr.split("@")[-1].lower() if "@" in from_addr else ""
+            if sender_domain in EXCLUDED_SENDER_DOMAINS:
                 analysis = analysis.model_copy(update={
                     "kategorija": EmailKategorija.SPLOSNO,
                     "rfq_podkategorija": None,

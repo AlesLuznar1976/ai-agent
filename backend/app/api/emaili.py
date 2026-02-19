@@ -396,7 +396,7 @@ async def recategorize_all_emails(
 ):
     """Re-kategoriziraj vse emaile z LLM (Ollama JSON mode)."""
     from app.agents.email_agent import get_email_agent
-    from app.services.email_sync import RFQ_ALLOWED_MAILBOXES
+    from app.services.email_sync import RFQ_ALLOWED_MAILBOXES, EXCLUDED_SENDER_DOMAINS
 
     email_agent = get_email_agent()
     all_emails = crud_emaili.list_emaili(db)
@@ -433,6 +433,17 @@ async def recategorize_all_emails(
             # RFQ/Naročilo samo za dovoljene nabiralnike (info, martina, spela)
             if analysis.kategorija in (EmailKategorija.RFQ, EmailKategorija.NAROCILO):
                 if not mailbox or mailbox.lower() not in RFQ_ALLOWED_MAILBOXES:
+                    analysis = analysis.model_copy(update={
+                        "kategorija": EmailKategorija.SPLOSNO,
+                        "rfq_podkategorija": None,
+                    })
+
+            # Izloči pošiljatelje iz izključenih domen (npr. calcuquote.com)
+            if analysis.kategorija in (EmailKategorija.RFQ, EmailKategorija.NAROCILO):
+                sender = db_email.posiljatelj or ""
+                sender_email = sender.split("<")[-1].replace(">", "").strip() if "<" in sender else sender.strip()
+                sender_domain = sender_email.split("@")[-1].lower() if "@" in sender_email else ""
+                if sender_domain in EXCLUDED_SENDER_DOMAINS:
                     analysis = analysis.model_copy(update={
                         "kategorija": EmailKategorija.SPLOSNO,
                         "rfq_podkategorija": None,
