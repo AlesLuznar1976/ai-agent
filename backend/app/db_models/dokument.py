@@ -1,9 +1,6 @@
-"""SQLAlchemy model za ai_agent.Dokumenti tabelo"""
-
 from sqlalchemy import Column, Integer, String, DateTime, ForeignKey
 from sqlalchemy.orm import relationship
 from datetime import datetime
-
 from app.database import Base
 
 
@@ -20,6 +17,5 @@ class DBDokument(Base):
     datum_nalozeno = Column(DateTime, default=datetime.now)
     nalozil_uporabnik = Column(Integer, ForeignKey("ai_agent.Uporabniki.id"), nullable=True)
 
-    # Relationships
     projekt = relationship("DBProjekt", back_populates="dokumenti")
     uporabnik = relationship("DBUporabnik")

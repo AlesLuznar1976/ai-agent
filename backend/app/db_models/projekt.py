@@ -1,9 +1,6 @@
-"""SQLAlchemy model za ai_agent.Projekti tabelo"""
-
 from sqlalchemy import Column, Integer, String, DateTime, ForeignKey, Text
 from sqlalchemy.orm import relationship
 from datetime import datetime
-
 from app.database import Base
 
 
@@ -23,13 +20,8 @@ class DBProjekt(Base):
     odgovorni_tehnolog = Column(Integer, ForeignKey("ai_agent.Uporabniki.id"), nullable=True)
     opombe = Column(Text, nullable=True)
 
-    # Relationships
-    prodajalec = relationship(
-        "DBUporabnik", foreign_keys=[odgovorni_prodaja], back_populates="projekti_prodaja"
-    )
-    tehnolog = relationship(
-        "DBUporabnik", foreign_keys=[odgovorni_tehnolog], back_populates="projekti_tehnolog"
-    )
+    prodajalec = relationship("DBUporabnik", foreign_keys=[odgovorni_prodaja], back_populates="projekti_prodaja")
+    tehnolog = relationship("DBUporabnik", foreign_keys=[odgovorni_tehnolog], back_populates="projekti_tehnolog")
     dokumenti = relationship("DBDokument", back_populates="projekt", cascade="all, delete-orphan")
     emaili = relationship("DBEmail", back_populates="projekt")
     casovnica = relationship("DBProjektCasovnica", back_populates="projekt", cascade="all, delete-orphan")

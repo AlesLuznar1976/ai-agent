@@ -1,8 +1,5 @@
-"""SQLAlchemy model za ai_agent.AuditLog tabelo"""
-
 from sqlalchemy import Column, BigInteger, Integer, String, DateTime, Text
 from datetime import datetime
-
 from app.database import Base
 
 
@@ -15,6 +12,6 @@ class DBAuditLog(Base):
     action = Column(String(50), nullable=False)
     resource_type = Column(String(50), nullable=True)
     resource_id = Column(String(50), nullable=True)
-    details = Column(Text, nullable=True)  # JSON
+    details = Column(Text, nullable=True)
     ip_address = Column(String(50), nullable=True)
     timestamp = Column(DateTime, default=datetime.now)

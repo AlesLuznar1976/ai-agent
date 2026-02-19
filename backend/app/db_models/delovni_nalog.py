@@ -1,9 +1,6 @@
-"""SQLAlchemy model za ai_agent.DelovniNalogi tabelo"""
-
 from sqlalchemy import Column, Integer, String, DateTime, ForeignKey, Numeric
 from sqlalchemy.orm import relationship
 from datetime import datetime
-
 from app.database import Base
 
 
@@ -24,5 +21,4 @@ class DBDelovniNalog(Base):
     datum_dejanski_konec = Column(DateTime, nullable=True)
     zadnja_sinhronizacija = Column(DateTime, default=datetime.now)
 
-    # Relationships
     projekt = relationship("DBProjekt", back_populates="delovni_nalogi")

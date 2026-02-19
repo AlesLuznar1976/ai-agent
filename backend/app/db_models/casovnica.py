@@ -1,9 +1,6 @@
-"""SQLAlchemy model za ai_agent.ProjektCasovnica tabelo"""
-
 from sqlalchemy import Column, BigInteger, Integer, String, DateTime, ForeignKey
 from sqlalchemy.orm import relationship
 from datetime import datetime
-
 from app.database import Base
 
 
@@ -20,5 +17,4 @@ class DBProjektCasovnica(Base):
     datum = Column(DateTime, default=datetime.now)
     uporabnik_ali_agent = Column(String(100), nullable=True)
 
-    # Relationships
     projekt = relationship("DBProjekt", back_populates="casovnica")

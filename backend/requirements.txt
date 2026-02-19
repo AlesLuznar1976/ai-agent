@@ -33,6 +33,10 @@ beautifulsoup4==4.12.3
 # System monitoring
 psutil==6.1.0
 
+# Data analysis (Python executor sandbox)
+pandas>=2.0.0
+numpy>=1.24.0
+
 # Ostalo
 pydantic==2.9.2
 pydantic-settings==2.6.0

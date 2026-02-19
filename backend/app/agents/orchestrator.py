@@ -6,10 +6,14 @@ Claude API se pokliče SAMO ko lokalni agent ne zna rešiti zahteve.
 """
 
 import json
+import logging
+import re
 import httpx
 from typing import Optional
 from datetime import datetime
 from pydantic import BaseModel
+
+logger = logging.getLogger(__name__)
 
 from app.config import get_settings
 from app.agents.erp_tools import ALL_TOOLS, WRITE_TOOL_NAMES, ESCALATION_TOOL_NAMES
@@ -17,29 +21,46 @@ from app.agents.tool_executor import get_tool_executor
 
 settings = get_settings()
 
-SYSTEM_PROMPT = """Si AI asistent za LUZNAR d.o.o. - podjetje za izdelavo elektronskih vezij (PCB, SMT montaža).
-Delaš z ERP sistemom LARGO.
+SYSTEM_PROMPT = """JEZIK: Odgovarjaj IZKLJUČNO v SLOVENŠČINI. NIKOLI ne odgovarjaj v angleščini ali kateremkoli drugem jeziku.
+
+Si AI asistent za LUZNAR d.o.o. - podjetje za izdelavo elektronskih vezij (PCB, SMT montaža).
+Delaš z ERP sistemom LARGO. DANAŠNJI DATUM JE: {today}. Trenutno leto je {year}. VEDNO uporabi leto {year} za vse poizvedbe.
 
 TVOJA VLOGA:
 - Pomagaš uporabnikom pri vsakodnevnem delu z ERP sistemom
 - Iščeš in prikazuješ podatke iz baze
 - Ustvarjaš/posodabljaš zapise (vedno s potrditivjo uporabnika)
-- Za kompleksne analize/skripte pokličeš ask_claude_for_script
+- Za kompleksne analize/skripte pokličeš ask_claude_for_script ali ask_claude_for_analysis
 
-ERP STRUKTURA:
-- Partnerji (PaSifra, PaNaziv, PaKraj, PaEMail) - stranke in dobavitelji (2385)
-- Narocilo (NaStNar, NaPartPlac, NaZnes, NaModul P/N, NaDatNar) - naročila (23016)
-- Ponudba (PonStPon, PonPart, PonZnes, PonDatPon) - ponudbe (8009)
-- Dobavnica (DNsStDNs, DNsPartPlac, DNsDatDNs) - dobavnice (19545)
-- Faktura - fakture
-- Promet - skladiščni premiki (509008)
-- Materialni - material/zaloge (265918)
-- Kalkulacija - kalkulacije (256313)
-- Kosovnica - BOM/kosovnice
-- DelPostopek - delovni postopki (426203)
-- DelovniNalog - delovni nalogi
-- PotekDelovnegaNaloga - potek proizvodnje (489530)
-- ai_agent.Projekti - projektno vodenje (faze: RFQ→Ponudba→Naročilo→Proizvodnja→Dobava)
+IZBIRA ORODJA:
+- "koliko naročil" → search_orders (z date_from/date_to) ali count_records (tabela Narocilo)
+- "pokaži naročila" → search_orders
+- "poišči partnerja" → search_partners
+- "koliko zapisov" → count_records
+- trendi, TOP N, primerjave, statistike → ask_claude_for_analysis
+- kompleksne poizvedbe → ask_claude_for_script
+- SAMO če noben drug tool ne ustreza → run_custom_query
+
+PRIMERI DATUMSKIH PARAMETROV (leto {year}!):
+- "v januarju" → date_from="{year}-01-01", date_to="{year}-01-31"
+- "v februarju" → date_from="{year}-02-01", date_to="{year}-02-28"
+- "v marcu" → date_from="{year}-03-01", date_to="{year}-03-31"
+- "letos" → date_from="{year}-01-01", date_to="{today}"
+
+ERP TABELE (dbo schema, MSSQL):
+- dbo.Partnerji (PaSifra, PaNaziv, PaKraj, PaEMail) - stranke in dobavitelji
+- dbo.Narocilo (NaStNar, NaPartPlac, NaZnes, NaModul P/N, NaDatNar) - NAROČILA
+- dbo.Ponudba (PonStPon, PonPart, PonZnes, PonDatPon) - ponudbe
+- dbo.Dobavnica (DNsStDNs, DNsPartPlac, DNsDatDNs) - dobavnice
+- dbo.Faktura - fakture
+- dbo.Promet - skladiščni premiki
+- dbo.Materialni - material/zaloge
+- dbo.Kalkulacija - kalkulacije
+- dbo.Kosovnica - BOM/kosovnice
+- dbo.DelPostopek - delovni postopki
+- dbo.DelovniNalog - delovni nalogi
+- dbo.PotekDelovnegaNaloga - potek proizvodnje
+- ai_agent.Projekti - projektno vodenje
 - ai_agent.Emaili - emaili
 - ai_agent.DelovniNalogi - delovni nalogi za projekte
 
@@ -47,20 +68,24 @@ PRAVILA:
 1. Za branje podatkov uporabi ustrezno orodje (search_partners, search_orders, itd.)
 2. Za pisanje (create_project, update_project, itd.) VEDNO poprosi za potrditev
 3. Če ne znaš rešiti ali je zahteva kompleksna - uporabi ask_claude_for_script
-4. VEDNO odgovarjaj v slovenščini
+4. VEDNO odgovarjaj v SLOVENŠČINI - nikoli v angleščini ali drugem jeziku!
 5. Bodi konkreten - prikaži podatke v preglednih tabelah
 6. Nikoli ne izmišljuj podatkov - vedno uporabi orodja za pridobitev pravih podatkov
-7. Pri run_custom_query vedno uporabi SELECT s TOP omejitvijo
-8. Ko uporabnik vpraša za "povzetek mailov", "pregled emailov", "preveri maile", "stanje pošte" - VEDNO uporabi summarize_emails orodje
-9. Ko uporabnik vpraša za "dnevno poročilo", "povzetek po nabiralnikih", "poročilo za danes" - uporabi daily_report orodje BREZ parametra datum (sistem sam uporabi današnji datum)
-10. Ko dobiš rezultat od orodja ki vsebuje polje "povzetek", prikaži CELOTNO besedilo iz polja "povzetek" DOBESEDNO - ne prevajaj, ne skrajšuj, ne dodajaj svoje analize
-11. NIKOLI ne izmišljuj datumov - če ne veš datuma, NE pošiljaj parametra datum, ker sistem sam uporabi pravi datum
-12. VEDNO odgovarjaj v SLOVENŠČINI - nikoli v angleščini
+7. Pri run_custom_query vedno uporabi dbo. prefix in SELECT s TOP omejitvijo
+8. Ko uporabnik vpraša za "povzetek mailov", "pregled emailov", "preveri maile" - VEDNO uporabi summarize_emails
+9. Ko uporabnik vpraša za "dnevno poročilo", "povzetek po nabiralnikih" - uporabi daily_report BREZ parametra datum
+10. Ko dobiš rezultat s poljem "povzetek", prikaži CELOTNO besedilo DOBESEDNO
+11. NIKOLI ne izmišljuj datumov - uporabi {today} kot današnji datum, leto je {year}
+12. Za podatkovne analize (trendi, primerjave, statistike, agregacije, TOP N) uporabi ask_claude_for_analysis
+13. Za preproste poizvedbe (iskanje, filtriranje, štetje) uporabi obstoječa orodja ali ask_claude_for_script
+14. Parametri za datume v orodjih so: date_from in date_to (NE datum_od/datum_do/start_date/end_date)
+15. Leto za datume je VEDNO {year} - NIKOLI ne uporabi 2023, 2024 ali 2025!
 
 KONTEKST:
-- DANAŠNJI DATUM JE: {today} - ta datum uporabi za vse poizvedbe
 - Uporabnik: {username} (vloga: {role})
 - Aktiven projekt: {current_project}
+
+POMEMBNO: Tvoj odgovor MORA biti v slovenščini!
 """
 
 
@@ -84,6 +109,16 @@ class Orchestrator:
 
     MAX_TOOL_ROUNDS = 5  # Max krogov tool calling
 
+    # Regex za odstranitev <think>...</think> blokov iz qwen3 odgovorov
+    _THINK_RE = re.compile(r"<think>.*?</think>", re.DOTALL)
+
+    @classmethod
+    def _strip_think(cls, text: str) -> str:
+        """Odstrani <think>...</think> bloke iz qwen3 odgovorov."""
+        if not text:
+            return text
+        return cls._THINK_RE.sub("", text).strip()
+
     def __init__(self):
         self.ollama_url = settings.ollama_url
         self.model = settings.ollama_tool_model or settings.ollama_model
@@ -100,8 +135,10 @@ class Orchestrator:
     ) -> AgentResponse:
         """Procesira uporabniško sporočilo."""
 
+        now = datetime.now()
         system_prompt = SYSTEM_PROMPT.format(
-            today=datetime.now().strftime("%Y-%m-%d"),
+            today=now.strftime("%Y-%m-%d"),
+            year=now.year,
             username=username,
             role=user_role,
             current_project=current_project_id or "ni izbran"
@@ -118,8 +155,9 @@ class Orchestrator:
                     "content": msg["content"]
                 })
 
-        # Dodaj novo sporočilo
-        messages.append({"role": "user", "content": message})
+        # Dodaj novo sporočilo z injiciranim kontekstom (LLM bolje upošteva user message)
+        augmented_message = f"[Datum: {now.strftime('%Y-%m-%d')}, leto: {now.year}. Odgovori v slovenščini.]\n{message}"
+        messages.append({"role": "user", "content": augmented_message})
 
         # Tool use loop
         all_tool_calls = []
@@ -130,14 +168,19 @@ class Orchestrator:
             response = await self._call_ollama(messages, ALL_TOOLS)
 
             if not response:
+                print(f"[ORCHESTRATOR] Ollama returned None!", flush=True)
                 return AgentResponse(
                     message="Oprostite, prišlo je do napake pri obdelavi. Poskusite znova.",
                     suggested_commands=["Pomoč", "Seznam projektov"]
                 )
 
             assistant_message = response.get("message", {})
-            content = assistant_message.get("content", "")
+            content = self._strip_think(assistant_message.get("content", ""))
+            # Posodobi content v sporočilu (brez <think> blokov)
+            assistant_message["content"] = content
             tool_calls = assistant_message.get("tool_calls", [])
+
+            print(f"[ORCHESTRATOR] Round {round_num} | Content: {(content or '')[:200]} | Tool calls: {len(tool_calls)} | Tools: {[tc.get('function',{}).get('name','?') for tc in tool_calls]}", flush=True)
 
             # Če ni tool klicev, vrni odgovor
             if not tool_calls:
@@ -165,6 +208,8 @@ class Orchestrator:
                     except json.JSONDecodeError:
                         arguments = {}
 
+                print(f"[ORCHESTRATOR] Tool call: {tool_name} | Args: {json.dumps(arguments, ensure_ascii=False, default=str)[:500]}", flush=True)
+
                 # Izvedi tool
                 result = await self.executor.execute_tool(
                     tool_name=tool_name,
@@ -172,6 +217,8 @@ class Orchestrator:
                     user_id=user_id,
                     user_role=user_role
                 )
+
+                print(f"[ORCHESTRATOR] Tool result: {tool_name} | success={result.get('success')} | error={result.get('error', '-')} | keys={list(result.keys())}", flush=True)
 
                 all_tool_calls.append({
                     "tool": tool_name,
@@ -210,7 +257,7 @@ class Orchestrator:
         """Pokliči Ollama API z tool use."""
 
         try:
-            async with httpx.AsyncClient(timeout=120.0) as client:
+            async with httpx.AsyncClient(timeout=300.0) as client:
                 response = await client.post(
                     f"{self.ollama_url}/api/chat",
                     json={
@@ -218,6 +265,7 @@ class Orchestrator:
                         "messages": messages,
                         "tools": tools,
                         "stream": False,
+                        "think": False,
                     }
                 )
 

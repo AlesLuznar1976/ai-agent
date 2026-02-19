@@ -1,9 +1,6 @@
-"""SQLAlchemy model za ai_agent.Obvestila tabelo"""
-
 from sqlalchemy import Column, BigInteger, Integer, String, DateTime, ForeignKey, Boolean
 from sqlalchemy.orm import relationship
 from datetime import datetime
-
 from app.database import Base
 
 
@@ -22,6 +19,5 @@ class DBObvestilo(Base):
     akcija_potrebna = Column(Boolean, default=False)
     datum = Column(DateTime, default=datetime.now)
 
-    # Relationships
     uporabnik = relationship("DBUporabnik", back_populates="obvestila")
     projekt = relationship("DBProjekt", back_populates="obvestila")

@@ -1,9 +1,6 @@
-"""SQLAlchemy model za ai_agent.Uporabniki tabelo"""
-
 from sqlalchemy import Column, Integer, String, Boolean, DateTime
 from sqlalchemy.orm import relationship
 from datetime import datetime
-
 from app.database import Base
 
 
@@ -23,12 +20,7 @@ class DBUporabnik(Base):
     zadnja_prijava = Column(DateTime, nullable=True)
     push_token = Column(String(255), nullable=True)
 
-    # Relationships
-    projekti_prodaja = relationship(
-        "DBProjekt", foreign_keys="DBProjekt.odgovorni_prodaja", back_populates="prodajalec"
-    )
-    projekti_tehnolog = relationship(
-        "DBProjekt", foreign_keys="DBProjekt.odgovorni_tehnolog", back_populates="tehnolog"
-    )
+    projekti_prodaja = relationship("DBProjekt", foreign_keys="DBProjekt.odgovorni_prodaja", back_populates="prodajalec")
+    projekti_tehnolog = relationship("DBProjekt", foreign_keys="DBProjekt.odgovorni_tehnolog", back_populates="tehnolog")
     seje = relationship("DBAktivnaSeja", back_populates="uporabnik", cascade="all, delete-orphan")
     obvestila = relationship("DBObvestilo", back_populates="uporabnik", cascade="all, delete-orphan")

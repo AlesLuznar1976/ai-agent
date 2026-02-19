@@ -1,9 +1,6 @@
-"""SQLAlchemy model za ai_agent.AktivneSeje tabelo"""
-
 from sqlalchemy import Column, Integer, String, DateTime, ForeignKey
 from sqlalchemy.orm import relationship
 from datetime import datetime
-
 from app.database import Base
 
 
@@ -19,5 +16,4 @@ class DBAktivnaSeja(Base):
     datum_ustvarjen = Column(DateTime, default=datetime.now)
     datum_poteka = Column(DateTime, nullable=True)
 
-    # Relationships
     uporabnik = relationship("DBUporabnik", back_populates="seje")

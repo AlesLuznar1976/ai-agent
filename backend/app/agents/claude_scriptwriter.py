@@ -187,6 +187,138 @@ SELECT ...
                 "script": script
             }
 
+    async def write_python_script(self, task_description: str, context: str = "") -> dict:
+        """
+        Claude napiše Python skripto za podatkovno analizo.
+
+        Returns:
+            dict z ključi:
+            - success: bool
+            - script_type: "python"
+            - script: Python koda
+            - explanation: razlaga
+        """
+        if not self.api_key:
+            return {
+                "success": False,
+                "error": "Claude API ključ ni konfiguriran. Nastavi ANTHROPIC_API_KEY."
+            }
+
+        python_prompt = f"""Napiši Python skripto za podatkovno analizo.
+
+NALOGA: {task_description}
+
+{f"DODATNI KONTEKST: {context}" if context else ""}
+
+OKOLJE:
+- Imaš na voljo funkcijo query_db(sql) ki izvede SQL poizvedbo in vrne pandas DataFrame
+- query_db() avtomatsko doda TOP 1000 če ni prisoten
+- Dovoljene knjižnice: pandas (pd), numpy (np), json, datetime, math, statistics, collections, decimal, re
+- Rezultat MORAŠ shraniti v spremenljivko `result`
+- `result` mora biti dict, list, ali primitiven tip (string, number) - JSON serializable
+- Za DataFrame uporabi .to_dict(orient='records') ali .to_dict()
+- Uporabi RTRIM() v SQL za char polja (imajo trailing spaces)
+
+PRIMER:
+```python
+df = query_db("SELECT TOP 1000 p.PaSifra, RTRIM(p.PaNaziv) as Partner, n.NaZnes FROM dbo.Narocilo n JOIN dbo.Partnerji p ON n.NaPartPlac = p.PaSifra WHERE n.NaModul = 'P'")
+top10 = df.groupby(['PaSifra','Partner'])['NaZnes'].agg(['sum','count']).nlargest(10, 'sum').reset_index()
+result = {{"partnerji": top10.to_dict(orient='records'), "skupna_vrednost": float(df['NaZnes'].sum())}}
+```
+
+ZAHTEVE:
+- Vrni SAMO Python kodo v ```python``` bloku
+- NE importaj modulov (pd, np, json, datetime so že na voljo)
+- Rezultat MORA biti v spremenljivki `result`
+- Za velike podatke naredi agregacijo/povzetek
+- Dodaj komentar kaj skripta dela"""
+
+        try:
+            response = await self.client.messages.create(
+                model=self.model,
+                max_tokens=2000,
+                system=ERP_CONTEXT,
+                messages=[{"role": "user", "content": python_prompt}]
+            )
+
+            content = response.content[0].text
+
+            # Extract Python iz odgovora
+            py_match = re.search(r'```python\s*(.*?)\s*```', content, re.DOTALL)
+            if py_match:
+                script = py_match.group(1).strip()
+            else:
+                # Poskusi najti kodo brez code block
+                py_match = re.search(r'```\s*(.*?)\s*```', content, re.DOTALL)
+                if py_match:
+                    script = py_match.group(1).strip()
+                else:
+                    script = content.strip()
+
+            # Razlaga
+            explanation = content.split('```')[0].strip() if '```' in content else "Claude je napisal Python analizo."
+
+            return {
+                "success": True,
+                "script_type": "python",
+                "script": script,
+                "explanation": explanation
+            }
+
+        except Exception as e:
+            return {"success": False, "error": f"Claude API napaka: {str(e)}"}
+
+    async def write_and_execute_python(
+        self,
+        task_description: str,
+        context: str,
+        executor  # ToolExecutor instance - za query_db
+    ) -> dict:
+        """Napiše Python skripto IN jo izvede v sandboxu."""
+        from app.agents.python_executor import PythonExecutor
+
+        # 1. Claude napiše Python skripto
+        script_result = await self.write_python_script(task_description, context)
+        if not script_result.get("success"):
+            return script_result
+
+        script = script_result["script"]
+
+        # 2. Ustvari PythonExecutor z query funkcijo iz ToolExecutorja
+        py_executor = PythonExecutor(
+            db_query_func=executor._execute_select_safe
+        )
+
+        # 3. Izvedi v sandboxu
+        try:
+            exec_result = py_executor.execute(script, timeout=30)
+
+            if exec_result.get("success"):
+                return {
+                    "success": True,
+                    "script": script,
+                    "script_type": "python",
+                    "explanation": script_result.get("explanation", ""),
+                    "data": exec_result.get("result"),
+                    "output": exec_result.get("output", ""),
+                }
+            else:
+                return {
+                    "success": False,
+                    "error": exec_result.get("error", "Neznana napaka"),
+                    "script": script,
+                    "script_type": "python",
+                    "output": exec_result.get("output", ""),
+                }
+
+        except Exception as e:
+            return {
+                "success": False,
+                "error": f"Napaka pri izvajanju Python skripte: {str(e)}",
+                "script": script,
+                "script_type": "python",
+            }
+
     @staticmethod
     def _safety_check(script: str) -> dict:
         """Preveri varnost SQL skripte."""
