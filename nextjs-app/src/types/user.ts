@@ -3,6 +3,7 @@ export interface User {
   username: string;
   role: string;
   permissions: string[];
+  mailbox?: string;
 }
 
 export interface AuthTokens {

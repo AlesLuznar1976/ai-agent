@@ -19,6 +19,7 @@ class DBUporabnik(Base):
     datum_ustvarjen = Column(DateTime, default=datetime.now)
     zadnja_prijava = Column(DateTime, nullable=True)
     push_token = Column(String(255), nullable=True)
+    mailbox = Column(String(100), nullable=True)
 
     projekti_prodaja = relationship("DBProjekt", foreign_keys="DBProjekt.odgovorni_prodaja", back_populates="prodajalec")
     projekti_tehnolog = relationship("DBProjekt", foreign_keys="DBProjekt.odgovorni_tehnolog", back_populates="tehnolog")

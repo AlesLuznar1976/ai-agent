@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session
 from app.auth import verify_password, hash_password, create_tokens, verify_token, get_current_user
 from app.models import Token, TokenData, UserRole
 from app.database import get_db
-from app.crud.uporabniki import get_uporabnik_by_username, update_zadnja_prijava
+from app.crud.uporabniki import get_uporabnik_by_username, get_uporabnik_by_id, update_zadnja_prijava
 
 router = APIRouter()
 
@@ -77,14 +77,17 @@ async def refresh_token(request: RefreshRequest):
 
 
 @router.get("/me")
-async def get_me(current_user: TokenData = Depends(get_current_user)):
+async def get_me(current_user: TokenData = Depends(get_current_user), db: Session = Depends(get_db)):
     """Pridobi podatke o trenutnem uporabniku"""
+
+    db_user = get_uporabnik_by_id(db, current_user.user_id)
 
     return {
         "user_id": current_user.user_id,
         "username": current_user.username,
         "role": current_user.role,
-        "permissions": current_user.permissions
+        "permissions": current_user.permissions,
+        "mailbox": db_user.mailbox if db_user else None,
     }
 
 
