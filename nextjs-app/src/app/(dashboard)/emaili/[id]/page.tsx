@@ -26,8 +26,9 @@ export default function EmailDetailPage({ params }: { params: Promise<{ id: stri
           if (found.analizaStatus === "Končano" && !found.analizaRezultat) {
             try {
               const analysis = await apiGetEmailAnalysis(found.id);
+              const rezultat = (analysis as Record<string, unknown>).analiza_rezultat as Record<string, unknown> | undefined;
               setEmail((prev) =>
-                prev ? { ...prev, analizaStatus: "Končano", analizaRezultat: analysis } : prev
+                prev ? { ...prev, analizaStatus: "Končano", analizaRezultat: rezultat } : prev
               );
             } catch {
               // ignore
@@ -48,12 +49,13 @@ export default function EmailDetailPage({ params }: { params: Promise<{ id: stri
     setIsAnalyzing(true);
     try {
       const result = await apiTriggerAnalysis(email.id);
+      const rezultat = (result as Record<string, unknown>).analiza_rezultat as Record<string, unknown> | undefined;
       setEmail((prev) =>
         prev
           ? {
               ...prev,
               analizaStatus: "Končano",
-              analizaRezultat: result,
+              analizaRezultat: rezultat,
             }
           : prev
       );
