@@ -89,6 +89,15 @@ class EmailSyncScheduler:
             except Exception as e:
                 print(f"RFQ analysis scheduler error: {e}")
 
+            # Po analizi obdelaj agent emaile (ustvari projekte)
+            try:
+                from app.services.agent_processor import process_agent_emails
+                created = await process_agent_emails(db)
+                if created > 0:
+                    print(f"Agent processor: {created} projects created")
+            except Exception as e:
+                print(f"Agent processor scheduler error: {e}")
+
         finally:
             db.close()
 

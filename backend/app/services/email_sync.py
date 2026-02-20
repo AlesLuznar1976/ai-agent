@@ -18,8 +18,11 @@ from app.utils.html_utils import strip_html_to_text
 
 settings = get_settings()
 
+# Agent mailbox za avtomatsko ustvarjanje projektov
+AGENT_MAILBOX = "agent@luznar.com"
+
 # Samo ti nabiralniki lahko prejmejo RFQ/Naročilo kategorizacijo
-RFQ_ALLOWED_MAILBOXES = {"info@luznar.com", "martina@luznar.com", "spela@luznar.com"}
+RFQ_ALLOWED_MAILBOXES = {"info@luznar.com", "martina@luznar.com", "spela@luznar.com", AGENT_MAILBOX}
 
 # Domene pošiljateljev, ki jih izločimo iz RFQ/Naročilo analize
 EXCLUDED_SENDER_DOMAINS = {"calcuquote.com"}
@@ -264,7 +267,10 @@ async def _sync_one_mailbox(
             )
 
         # Če je RFQ/Naročilo, označi za analizo
-        if analysis.kategorija.value in ("RFQ", "Naročilo"):
+        # Za agent mailbox: vsi emaili gredo skozi deep analysis
+        if mailbox.lower() == AGENT_MAILBOX:
+            crud_emaili.update_email(db, db_email.id, analiza_status="Čaka")
+        elif analysis.kategorija.value in ("RFQ", "Naročilo"):
             crud_emaili.update_email(db, db_email.id, analiza_status="Čaka")
 
         new_emails.append(_db_email_to_dict(db_email))

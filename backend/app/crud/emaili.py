@@ -40,6 +40,34 @@ def list_nekategorizirani(db: Session) -> list[DBEmail]:
         DBEmail.status.in_(["Nov", "Prebran"])).order_by(desc(DBEmail.datum)).all()
 
 
+def list_emails_pending_analysis(db: Session) -> list[DBEmail]:
+    """Vrni emaile ki čakajo na analizo (status NULL ali Čaka), samo od 2026-02-19 naprej."""
+    from sqlalchemy import or_
+    return db.query(DBEmail).filter(
+        DBEmail.datum >= "2026-02-19",
+        or_(
+            DBEmail.analiza_status.is_(None),
+            DBEmail.analiza_status == "",
+            DBEmail.analiza_status == "Čaka",
+        ),
+    ).order_by(DBEmail.id).all()
+
+
+def list_agent_emails_ready(db: Session) -> list[DBEmail]:
+    """Vrni analizirane agent emaile brez projekta (za avtomatsko ustvarjanje projektov).
+
+    Pogoji:
+    - mailbox = agent@luznar.com (v izvleceni_podatki JSON)
+    - analiza_status = "Končano"
+    - projekt_id IS NULL
+    """
+    return db.query(DBEmail).filter(
+        DBEmail.analiza_status == "Končano",
+        DBEmail.projekt_id.is_(None),
+        DBEmail.izvleceni_podatki.contains('"mailbox": "agent@luznar.com"'),
+    ).order_by(DBEmail.id).all()
+
+
 def create_email(db: Session, outlook_id: str, zadeva: str, posiljatelj: str, datum: datetime,
                  prejemniki: Optional[str] = None, telo: Optional[str] = None,
                  kategorija: str = "Splosno", izvleceni_podatki: Optional[dict] = None,
