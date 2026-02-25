@@ -287,38 +287,51 @@ def _set_cell_text(cell, text: str, bold=False, size=10, color=None, align=None)
     cell.vertical_alignment = WD_ALIGN_VERTICAL.CENTER
 
 
+def _get_asset_path(filename: str) -> str:
+    """Vrni pot do asset datoteke v templates/assets/."""
+    return os.path.join(os.path.dirname(os.path.dirname(__file__)), "templates", "assets", filename)
+
+
 def _add_luznar_header(doc: Document):
-    """Dodaj Luznar header z imenom in kontaktom."""
-    p = doc.add_paragraph()
-    p.alignment = WD_ALIGN_PARAGRAPH.LEFT
-    run = p.add_run("LUZNAR")
-    run.font.size = Pt(22)
-    run.font.color.rgb = NAVY
-    run.bold = True
-    run = p.add_run("  ELECTRONICS")
-    run.font.size = Pt(22)
-    run.font.color.rgb = GOLD
+    """Dodaj Luznar header kot sliko (glava luznar 2026.png)."""
+    header_path = _get_asset_path("glava luznar 2026.png")
+    if os.path.exists(header_path):
+        p = doc.add_paragraph()
+        p.alignment = WD_ALIGN_PARAGRAPH.LEFT
+        p.space_after = Pt(6)
+        p.paragraph_format.space_before = Pt(0)
+        run = p.add_run()
+        # Širina slike = polna širina strani (A4 - margine: 21cm - 2*2.5cm = 16cm)
+        run.add_picture(header_path, width=Cm(16))
+    else:
+        # Fallback na tekstovni header
+        p = doc.add_paragraph()
+        p.alignment = WD_ALIGN_PARAGRAPH.LEFT
+        run = p.add_run("LUZNAR")
+        run.font.size = Pt(22)
+        run.font.color.rgb = NAVY
+        run.bold = True
+        run = p.add_run("  ELECTRONICS")
+        run.font.size = Pt(22)
+        run.font.color.rgb = GOLD
 
-    p = doc.add_paragraph()
-    run = p.add_run("Luznar electronics d.o.o. | Hrastje 52g | SI-4000 Kranj")
-    run.font.size = Pt(8)
-    run.font.color.rgb = GRAY
-    p.alignment = WD_ALIGN_PARAGRAPH.LEFT
+        p = doc.add_paragraph()
+        run = p.add_run("Luznar electronics d.o.o. | Hrastje 52g | SI-4000 Kranj")
+        run.font.size = Pt(8)
+        run.font.color.rgb = GRAY
 
-    p = doc.add_paragraph()
-    run = p.add_run("+386 4 281 88 00 | info@luznar.com")
-    run.font.size = Pt(8)
-    run.font.color.rgb = GOLD
-    run.bold = True
-    p.alignment = WD_ALIGN_PARAGRAPH.LEFT
+        p = doc.add_paragraph()
+        run = p.add_run("+386 4 281 88 00 | info@luznar.com")
+        run.font.size = Pt(8)
+        run.font.color.rgb = GOLD
+        run.bold = True
 
-    # Gold separator line
-    p = doc.add_paragraph()
-    p.space_before = Pt(4)
-    p.space_after = Pt(8)
-    run = p.add_run("━" * 72)
-    run.font.size = Pt(6)
-    run.font.color.rgb = GOLD
+        p = doc.add_paragraph()
+        p.space_before = Pt(4)
+        p.space_after = Pt(8)
+        run = p.add_run("━" * 72)
+        run.font.size = Pt(6)
+        run.font.color.rgb = GOLD
 
 
 def _add_section_header_table(doc: Document, title: str):
