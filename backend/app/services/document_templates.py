@@ -334,6 +334,24 @@ def _add_luznar_header(doc: Document):
         run.font.color.rgb = GOLD
 
 
+def _set_table_borders(table, color_hex: str = "999999", size: int = 4):
+    """Nastavi obrobe na celotni tabeli."""
+    tbl = table._tbl
+    tblPr = tbl.tblPr if tbl.tblPr is not None else tbl.makeelement(qn("w:tblPr"), {})
+    borders = tblPr.makeelement(qn("w:tblBorders"), {})
+    for edge in ("top", "left", "bottom", "right", "insideH", "insideV"):
+        element = borders.makeelement(qn(f"w:{edge}"), {
+            qn("w:val"): "single",
+            qn("w:sz"): str(size),
+            qn("w:space"): "0",
+            qn("w:color"): color_hex,
+        })
+        borders.append(element)
+    tblPr.append(borders)
+    if tbl.tblPr is None:
+        tbl.insert(0, tblPr)
+
+
 def _add_section_header_table(doc: Document, title: str):
     """Dodaj section header kot tabelo z navy ozadjem (kot v PDF-ju)."""
     table = doc.add_table(rows=1, cols=1)
@@ -344,6 +362,7 @@ def _add_section_header_table(doc: Document, title: str):
 
     # Set table width to full page
     table.columns[0].width = Cm(16)
+    _set_table_borders(table, NAVY_HEX)
     doc.add_paragraph().space_after = Pt(2)
 
 
@@ -427,11 +446,14 @@ def _build_reklamacija(doc: Document, data: dict):
 
     for i, (l1, v1, l2, v2) in enumerate(fields):
         row = table.rows[i + 1]
+        _set_cell_shading(row.cells[0], LIGHT_GRAY_HEX)
         _set_cell_text(row.cells[0], l1, bold=True, size=9)
         _set_cell_text(row.cells[1], v1, size=9)
+        _set_cell_shading(row.cells[2], LIGHT_GRAY_HEX)
         _set_cell_text(row.cells[2], l2, bold=True, size=9)
         _set_cell_text(row.cells[3], v2, size=9)
 
+    _set_table_borders(table)
     doc.add_paragraph().space_after = Pt(10)
 
     # ── COMPLAINT DETAILS table ──
@@ -453,6 +475,7 @@ def _build_reklamacija(doc: Document, data: dict):
     table.columns[1].width = Cm(11)
 
     for i, (label, value) in enumerate(details_data):
+        _set_cell_shading(table.cell(i, 0), LIGHT_GRAY_HEX)
         _set_cell_text(table.cell(i, 0), label, bold=True, size=9)
         # Quantity Rejected v rdeči barvi (kot v PDF)
         if label == "Quantity Rejected:" and value:
@@ -462,34 +485,44 @@ def _build_reklamacija(doc: Document, data: dict):
         else:
             _set_cell_text(table.cell(i, 1), value, size=9)
 
+    _set_table_borders(table)
     doc.add_paragraph().space_after = Pt(10)
 
     # ── NON-CONFORMANCE DESCRIPTION ──
     _add_section_header_table(doc, "NON-CONFORMANCE DESCRIPTION")
 
+    # Vsebino zavij v obrobleno tabelo (box)
+    nc_table = doc.add_table(rows=1, cols=1)
+    nc_table.alignment = WD_TABLE_ALIGNMENT.CENTER
+    nc_table.columns[0].width = Cm(16)
+    _set_table_borders(nc_table)
+    nc_cell = nc_table.cell(0, 0)
+
     nc_type = data.get("non_conformance_type", "")
     if nc_type:
-        p = doc.add_paragraph()
-        p.space_after = Pt(4)
+        p = nc_cell.paragraphs[0]
+        p.paragraph_format.space_before = Pt(4)
+        p.paragraph_format.space_after = Pt(4)
         run = p.add_run("Non-Conformance Type: ")
         run.font.size = Pt(10)
         run.bold = True
         run = p.add_run(nc_type)
         run.font.size = Pt(10)
+    else:
+        nc_cell.paragraphs[0].paragraph_format.space_before = Pt(2)
 
-    p = doc.add_paragraph()
-    p.space_after = Pt(4)
+    p = nc_cell.add_paragraph()
+    p.paragraph_format.space_after = Pt(4)
     run = p.add_run("Description:")
     run.font.size = Pt(10)
     run.bold = True
 
     description = data.get("description", "")
-    # Split description into paragraphs
     for para_text in description.split("\n"):
         para_text = para_text.strip()
         if para_text:
-            p = doc.add_paragraph()
-            p.space_after = Pt(4)
+            p = nc_cell.add_paragraph()
+            p.paragraph_format.space_after = Pt(4)
             run = p.add_run(para_text)
             run.font.size = Pt(10)
 
@@ -504,15 +537,23 @@ def _build_reklamacija(doc: Document, data: dict):
 
         _add_section_header_table(doc, "REQUIRED CORRECTIVE ACTIONS")
 
-        p = doc.add_paragraph()
-        p.space_after = Pt(6)
+        # Vsebino zavij v obrobleno tabelo (box)
+        ca_table = doc.add_table(rows=1, cols=1)
+        ca_table.alignment = WD_TABLE_ALIGNMENT.CENTER
+        ca_table.columns[0].width = Cm(16)
+        _set_table_borders(ca_table)
+        ca_cell = ca_table.cell(0, 0)
+
+        p = ca_cell.paragraphs[0]
+        p.paragraph_format.space_before = Pt(4)
+        p.paragraph_format.space_after = Pt(6)
         run = p.add_run("The following corrective actions are required:")
         run.font.size = Pt(10)
         run.bold = True
 
         for i, action in enumerate(actions):
-            p = doc.add_paragraph()
-            p.space_after = Pt(3)
+            p = ca_cell.add_paragraph()
+            p.paragraph_format.space_after = Pt(3)
             run = p.add_run(f"{i + 1}. ")
             run.font.size = Pt(10)
             run.bold = True
@@ -541,8 +582,11 @@ def _build_reklamacija(doc: Document, data: dict):
         table.columns[1].width = Cm(11)
 
         for i, (label, value) in enumerate(deadline_data):
+            _set_cell_shading(table.cell(i, 0), LIGHT_GRAY_HEX)
             _set_cell_text(table.cell(i, 0), label, bold=True, size=9)
             _set_cell_text(table.cell(i, 1), value, bold=True, size=9, color=RED)
+
+        _set_table_borders(table)
 
     # ── APPENDIX: PHOTOGRAPHIC EVIDENCE ──
     photo_descs = data.get("photo_descriptions", [])
