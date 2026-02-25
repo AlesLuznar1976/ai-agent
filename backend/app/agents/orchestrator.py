@@ -21,6 +21,70 @@ from app.agents.tool_executor import get_tool_executor
 
 settings = get_settings()
 
+# ----- Tool selector: pošlji samo relevantna orodja (~10) namesto vseh 31 -----
+
+# Orodja ki so VEDNO na voljo
+CORE_TOOLS = {
+    "count_records", "list_projects", "search_partners",
+    "run_custom_query",
+}
+
+# Domenski skupki orodij  (ključne besede → imena orodij)
+TOOL_GROUPS: dict[str, tuple[set[str], set[str]]] = {
+    # (keywords, tool names)
+    "nabava": (
+        {"naročil", "narocil", "ponudb", "dobavnic", "faktur", "partner", "stranka", "dobavitelj", "nabav"},
+        {"search_orders", "search_quotes", "get_delivery_notes", "get_invoices",
+         "get_partner_details", "search_partners"},
+    ),
+    "email": (
+        {"email", "mail", "pošt", "post", "sporočil", "sporocil", "povzet", "dnevno poročilo", "dnevni"},
+        {"get_emails", "get_email_details", "get_related_emails", "summarize_emails",
+         "daily_report", "assign_email_to_project", "categorize_email",
+         "draft_email_response", "sync_emails"},
+    ),
+    "projekt": (
+        {"projekt", "rfq", "časovnic", "casovnic", "ustvari projekt", "posodobi projekt"},
+        {"list_projects", "get_project_details", "create_project", "update_project",
+         "generate_rfq_summary", "generate_document"},
+    ),
+    "proizvodnja": (
+        {"zalog", "bom", "kosovnic", "delovni nalog", "proizvodnj", "postopek", "postopk",
+         "kalkulacij", "material"},
+        {"get_stock_info", "get_bom", "get_work_operations", "get_production_status",
+         "get_calculations", "create_work_order"},
+    ),
+    "analitika": (
+        {"analiz", "trend", "top ", "primerjav", "statistik", "napoved", "graf", "script", "skripta", "python"},
+        {"ask_claude_for_script", "ask_claude_for_analysis"},
+    ),
+}
+
+# Lookup: ime orodja → tool objekt
+_TOOL_BY_NAME: dict[str, dict] = {t["function"]["name"]: t for t in ALL_TOOLS}
+
+MAX_TOOLS = 12  # Ollama limit za zanesljivo tool calling
+
+
+def select_tools(message: str) -> list[dict]:
+    """Izberi relevantna orodja glede na uporabniško sporočilo (max MAX_TOOLS)."""
+    msg_lower = message.lower()
+
+    selected_names: set[str] = set(CORE_TOOLS)
+
+    for _group, (keywords, tool_names) in TOOL_GROUPS.items():
+        if any(kw in msg_lower for kw in keywords):
+            selected_names |= tool_names
+
+    # Če ni zadetek, dodaj najpogostejša
+    if selected_names == CORE_TOOLS:
+        selected_names |= {"search_orders", "get_emails", "summarize_emails",
+                           "ask_claude_for_script", "get_project_details"}
+
+    # Omeji na MAX_TOOLS
+    tools = [_TOOL_BY_NAME[n] for n in selected_names if n in _TOOL_BY_NAME]
+    return tools[:MAX_TOOLS]
+
 SYSTEM_PROMPT = """JEZIK: Odgovarjaj IZKLJUČNO v SLOVENŠČINI. NIKOLI ne odgovarjaj v angleščini ali kateremkoli drugem jeziku.
 
 Si AI asistent za LUZNAR d.o.o. - podjetje za izdelavo elektronskih vezij (PCB, SMT montaža).
@@ -163,9 +227,13 @@ class Orchestrator:
         all_tool_calls = []
         pending_actions = []
 
+        # Izberi relevantna orodja za to sporočilo (max ~12 namesto 31)
+        selected = select_tools(message)
+        print(f"[ORCHESTRATOR] Selected {len(selected)} tools: {[t['function']['name'] for t in selected]}", flush=True)
+
         for round_num in range(self.MAX_TOOL_ROUNDS):
             # Pokliči Ollama
-            response = await self._call_ollama(messages, ALL_TOOLS)
+            response = await self._call_ollama(messages, selected)
 
             if not response:
                 print(f"[ORCHESTRATOR] Ollama returned None!", flush=True)

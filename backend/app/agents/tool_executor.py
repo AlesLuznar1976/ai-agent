@@ -582,11 +582,16 @@ class ToolExecutor:
             "Partnerji", "Narocilo", "Ponudba", "Dobavnica",
             "Faktura", "Promet", "Materialni", "Kalkulacija",
             "Kosovnica", "DelPostopek", "DelovniNalog",
-            "PotekDelovnegaNaloga", "Rezervacije", "Cenik"
+            "PotekDelovnegaNaloga", "Rezervacije", "Cenik",
         }
+        # ai_agent schema tabele
+        ai_agent_tables = {"Projekti", "Emaili", "DelovniNalogi", "ChatHistory"}
 
-        if table not in allowed_tables:
+        if table not in allowed_tables and table not in ai_agent_tables:
             return {"success": False, "error": f"Tabela {table} ni dovoljena za štetje"}
+
+        # Določi pravilno schema
+        schema = "ai_agent" if table in ai_agent_tables else "dbo"
 
         where = ""
         params = ()
@@ -597,7 +602,7 @@ class ToolExecutor:
                 return {"success": False, "error": "Nevaren WHERE pogoj"}
             where = f"WHERE {clause}"
 
-        count = self._execute_count(f"SELECT COUNT(*) FROM dbo.{table} {where}", params)
+        count = self._execute_count(f"SELECT COUNT(*) FROM {schema}.{table} {where}", params)
         return {"success": True, "data": {"table": table, "count": count}}
 
     # Vzorci za nezaželeno pošto (LIKE matching za encoding issues)

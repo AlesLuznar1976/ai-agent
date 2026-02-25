@@ -9,6 +9,7 @@ class DBCakajocaAkcija(Base):
     __table_args__ = {"schema": "ai_agent"}
 
     id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(Integer, ForeignKey("ai_agent.Uporabniki.id"), nullable=True)
     projekt_id = Column(Integer, ForeignKey("ai_agent.Projekti.id"), nullable=True)
     tip_akcije = Column(String(100), nullable=False)
     opis = Column(String(500), nullable=False)
@@ -18,6 +19,7 @@ class DBCakajocaAkcija(Base):
     datum_ustvarjeno = Column(DateTime, default=datetime.now)
     potrdil_uporabnik = Column(Integer, ForeignKey("ai_agent.Uporabniki.id"), nullable=True)
     datum_potrjeno = Column(DateTime, nullable=True)
+    rezultat = Column(Text, nullable=True)
 
     projekt = relationship("DBProjekt", back_populates="cakajce_akcije")
-    uporabnik = relationship("DBUporabnik")
+    uporabnik = relationship("DBUporabnik", foreign_keys=[potrdil_uporabnik])

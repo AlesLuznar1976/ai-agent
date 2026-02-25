@@ -22,7 +22,7 @@ class Settings(BaseSettings):
 
     # Ollama (lokalni LLM)
     ollama_url: str = "http://192.168.0.66:11434"
-    ollama_model: str = "llama3:8b"
+    ollama_model: str = "qwen3:14b"
     ollama_tool_model: Optional[str] = None  # Model za tool use (npr. llama4:scout)
 
     # OpenAI (cloud LLM)
