@@ -259,6 +259,63 @@ def _setup_document(doc: Document):
         section.left_margin = Cm(2.5)
         section.right_margin = Cm(2.5)
 
+    _add_background(doc)
+
+
+def _add_background(doc: Document):
+    """Dodaj ozadje (watermark) poravnano spodaj desno na vse strani dokumenta."""
+    bg_path = _get_asset_path("ozadje 2026.png")
+    if not os.path.exists(bg_path):
+        return
+
+    from lxml import etree
+
+    # Slika dimenzije za ozadje (ohrani aspect ratio)
+    img_w = Cm(15)
+    img_h = int(img_w * 1869 / 1780)  # ohrani aspect ratio (1780x1869px)
+
+    for section in doc.sections:
+        header = section.header
+        header.is_linked_to_previous = False
+        p = header.paragraphs[0] if header.paragraphs else header.add_paragraph()
+        p.paragraph_format.space_before = Pt(0)
+        p.paragraph_format.space_after = Pt(0)
+
+        run = p.add_run()
+        pic = run.add_picture(bg_path, width=img_w)
+
+        inline = pic._inline
+        # Pretvori iz inline v anchor, pozicionirano spodaj desno za tekstom
+        anchor_xml = f'''
+        <wp:anchor distT="0" distB="0" distL="0" distR="0"
+                   simplePos="0" relativeHeight="0" behindDoc="1"
+                   locked="1" layoutInCell="1" allowOverlap="1"
+                   xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing"
+                   xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
+            <wp:simplePos x="0" y="0"/>
+            <wp:positionH relativeFrom="page">
+                <wp:align>right</wp:align>
+            </wp:positionH>
+            <wp:positionV relativeFrom="page">
+                <wp:align>bottom</wp:align>
+            </wp:positionV>
+            <wp:extent cx="{img_w}" cy="{img_h}"/>
+            <wp:effectExtent l="0" t="0" r="0" b="0"/>
+            <wp:wrapNone/>
+            <wp:docPr id="100" name="Background"/>
+            <wp:cNvGraphicFramePr/>
+        </wp:anchor>
+        '''
+
+        anchor_elem = etree.fromstring(anchor_xml)
+        graphic = inline.find(".//{http://schemas.openxmlformats.org/drawingml/2006/main}graphic")
+        if graphic is not None:
+            anchor_elem.append(graphic)
+
+        drawing = inline.getparent()
+        drawing.remove(inline)
+        drawing.append(anchor_elem)
+
 
 def _set_cell_shading(cell, color_hex: str):
     """Nastavi ozadje celice."""
