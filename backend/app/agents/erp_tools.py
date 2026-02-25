@@ -666,7 +666,7 @@ WRITE_TOOLS = [
         "type": "function",
         "function": {
             "name": "generate_document",
-            "description": "Generiraj dokument za projekt (TIV, ponudba, BOM, delovni list). ZAHTEVA POTRDITEV.",
+            "description": "Generiraj dokument za projekt (TIV, ponudba, BOM, delovni list, reklamacija). ZAHTEVA POTRDITEV.",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -677,10 +677,14 @@ WRITE_TOOLS = [
                     "doc_type": {
                         "type": "string",
                         "description": "Tip dokumenta",
-                        "enum": ["TIV", "Ponudba", "BOM", "Delovni_list", "Proizvodni"]
+                        "enum": ["TIV", "Ponudba", "BOM", "Delovni_list", "Proizvodni", "Reklamacija"]
+                    },
+                    "content": {
+                        "type": "string",
+                        "description": "Besedilo/podatki za dokument (iz pogovora ali analize). Če ni podano, se podatki pridobijo iz projekta."
                     }
                 },
-                "required": ["projekt_id", "doc_type"]
+                "required": ["doc_type"]
             }
         }
     },

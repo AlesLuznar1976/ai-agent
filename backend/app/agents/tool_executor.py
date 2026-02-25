@@ -986,7 +986,7 @@ class ToolExecutor:
             "update_project": f"Posodobi projekt #{args.get('project_id', '?')}",
             "create_work_order": f"Ustvari delovni nalog za projekt #{args.get('projekt_id', '?')}",
             "assign_email_to_project": f"Dodeli email #{args.get('email_id', '?')} projektu #{args.get('projekt_id', '?')}",
-            "generate_document": f"Generiraj {args.get('doc_type', '?')} za projekt #{args.get('projekt_id', '?')}",
+            "generate_document": f"Generiraj {args.get('doc_type', '?')}" + (f" za projekt #{args['projekt_id']}" if args.get('projekt_id') else ""),
             "categorize_email": f"Kategoriziraj email #{args.get('email_id', '?')} z AI",
             "draft_email_response": f"Pripravi odgovor na email #{args.get('email_id', '?')} ({args.get('response_type', 'acknowledge')})",
             "sync_emails": f"Sinhroniziraj emaile iz Outlook (top {args.get('top', 50)})",
@@ -1187,12 +1187,203 @@ class ToolExecutor:
         }
 
     async def _exec_generate_document(self, args: dict, user_id: int) -> dict:
-        """Generiraj dokument - placeholder za pravo implementacijo."""
+        """Generiraj Word dokument z uporabo document_templates."""
+        import os
+        import glob
+        import logging
+        import anthropic
+        from app.database import SessionLocal
+        from app.crud import dokumenti as crud_dokumenti
+        from app.services.document_templates import (
+            generate_document as gen_doc,
+            extract_pdf_images,
+            EXTRACTION_PROMPTS,
+            DOCUMENT_TYPES,
+        )
+
+        logger = logging.getLogger(__name__)
+        doc_type = args.get("doc_type", "")
+        content = args.get("content", "")
+        projekt_id = args.get("projekt_id")
+
+        # Mapiranje doc_type na template_type
+        type_map = {
+            "Reklamacija": "reklamacija",
+            "BOM": "bom_pregled",
+            "TIV": "rfq_analiza",
+            "Ponudba": "porocilo",
+            "Delovni_list": "porocilo",
+            "Proizvodni": "porocilo",
+        }
+        template_type = type_map.get(doc_type)
+        if not template_type or template_type not in DOCUMENT_TYPES:
+            return {"success": False, "error": f"Nepodprt tip dokumenta: {doc_type}"}
+
+        # Pridobi vsebino — iz args, chat historije ali emailov
+        if not content:
+            # Poskusi pobrati iz nedavne chat historije (DESC = najnovejša prva)
+            try:
+                db = SessionLocal()
+                try:
+                    from app.db_models.chat_history import DBChatMessage
+                    recent = (
+                        db.query(DBChatMessage)
+                        .filter(DBChatMessage.user_id == user_id)
+                        .order_by(DBChatMessage.datum.desc())
+                        .limit(10)
+                        .all()
+                    )
+                    agent_texts = []
+                    for m in recent:
+                        if m.role == "agent" and len(m.content or "") > 200:
+                            agent_texts.append(m.content)
+                    if agent_texts:
+                        content = "\n\n---\n\n".join(agent_texts[:3])
+                finally:
+                    db.close()
+            except Exception as e:
+                logger.warning(f"Napaka pri branju chat historije: {e}")
+
+        if not content and projekt_id:
+            try:
+                conn = self._get_connection()
+                try:
+                    cursor = conn.cursor()
+                    cursor.execute(
+                        "SELECT zadeva, telo FROM ai_agent.Emaili "
+                        "WHERE projekt_id = ? AND kategorija = 'Reklamacija' "
+                        "ORDER BY datum_prejema DESC",
+                        (projekt_id,)
+                    )
+                    rows = cursor.fetchall()
+                    if rows:
+                        content = "\n\n---\n\n".join(
+                            f"Zadeva: {r[0]}\n{r[1]}" for r in rows
+                        )
+                finally:
+                    conn.close()
+            except Exception:
+                pass
+
+        if not content:
+            return {"success": False, "error": "Ni vsebine za generiranje dokumenta. Podaj 'content' parameter ali poveži projekt z emaili."}
+
+        # Poišči PDF-je v chat_uploads za ekstrakcijo slik
+        image_paths = []
+        try:
+            upload_base = os.path.join(
+                os.path.dirname(os.path.dirname(os.path.dirname(__file__))),
+                "data", "chat_uploads", str(user_id)
+            )
+            if os.path.exists(upload_base):
+                # Poišči najnovejši PDF
+                pdf_files = sorted(
+                    glob.glob(os.path.join(upload_base, "**", "*.pdf"), recursive=True),
+                    key=os.path.getmtime,
+                    reverse=True,
+                )
+                if pdf_files:
+                    latest_pdf = pdf_files[0]
+                    img_dir = os.path.join(
+                        os.path.dirname(os.path.dirname(os.path.dirname(__file__))),
+                        "data", "documents", "images",
+                        datetime.now().strftime("%Y%m%d_%H%M%S")
+                    )
+                    # Izvleči slike od strani 2 naprej (stran 1 = naslovnica)
+                    image_paths = extract_pdf_images(latest_pdf, img_dir, start_page=1)
+                    logger.info(f"[DOC] Extracted {len(image_paths)} images from {latest_pdf}")
+        except Exception as e:
+            logger.warning(f"Napaka pri iskanju/ekstrakciji PDF slik: {e}")
+
+        # Claude ekstrakcija strukturiranih podatkov
+        if not settings.anthropic_api_key:
+            return {"success": False, "error": "Anthropic API ključ ni konfiguriran."}
+
+        extraction_prompt = EXTRACTION_PROMPTS.get(template_type)
+        if not extraction_prompt:
+            return {"success": False, "error": f"Ni ekstrakcijskega prompta za tip: {template_type}"}
+
+        try:
+            client = anthropic.AsyncAnthropic(api_key=settings.anthropic_api_key)
+            response = await client.messages.create(
+                model=settings.anthropic_model,
+                max_tokens=2000,
+                messages=[{
+                    "role": "user",
+                    "content": f"{extraction_prompt}\n\n---\nVSEBINA ZA ANALIZO:\n{content}",
+                }],
+            )
+            raw_json = response.content[0].text.strip()
+
+            # Odstrani morebitne markdown code block oznake
+            if raw_json.startswith("```"):
+                raw_json = raw_json.split("\n", 1)[-1]
+            if raw_json.endswith("```"):
+                raw_json = raw_json.rsplit("```", 1)[0]
+            raw_json = raw_json.strip()
+
+            data = json.loads(raw_json)
+        except json.JSONDecodeError as e:
+            return {"success": False, "error": f"Claude ni vrnil veljavnega JSON: {str(e)}"}
+        except Exception as e:
+            return {"success": False, "error": f"Napaka pri klicu Claude: {str(e)}"}
+
+        # Dodaj slike iz PDF-ja v podatke za template
+        if image_paths:
+            data["image_paths"] = image_paths
+
+        # Generiraj Word dokument
+        try:
+            buffer = gen_doc(template_type, data)
+        except Exception as e:
+            return {"success": False, "error": f"Napaka pri generiranju dokumenta: {str(e)}"}
+
+        # Shrani datoteko na disk
+        template_info = DOCUMENT_TYPES[template_type]
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        filename = f"{template_info['title'].replace(' ', '_')}_{timestamp}.docx"
+        doc_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "data", "documents")
+        os.makedirs(doc_dir, exist_ok=True)
+        filepath = os.path.join(doc_dir, filename)
+
+        with open(filepath, "wb") as f:
+            f.write(buffer.read())
+
+        # Shrani zapis v bazo
+        db_tip = doc_type.replace("_", " ")
+        dokument_id = None
+        if projekt_id:
+            try:
+                db = SessionLocal()
+                try:
+                    db_doc = crud_dokumenti.create_dokument(
+                        db,
+                        projekt_id=projekt_id,
+                        naziv_datoteke=filename,
+                        pot_do_datoteke=filepath,
+                        tip=db_tip,
+                        nalozil_uporabnik=user_id,
+                    )
+                    dokument_id = db_doc.id
+                finally:
+                    db.close()
+            except Exception as e:
+                logger.error(f"Napaka pri shranjevanju dokumenta v DB: {e}")
+
+        # Določi download URL — DB endpoint če imamo dokument_id, sicer po imenu datoteke
+        if dokument_id:
+            download_url = f"/dokumenti/{dokument_id}/download"
+        else:
+            download_url = f"/dokumenti/download-by-name/{filename}"
+
         return {
             "success": True,
             "data": {
-                "message": f"Dokument {args['doc_type']} za projekt #{args['projekt_id']} bo generiran.",
-                "status": "V pripravi"
+                "message": f"Dokument {doc_type} uspešno generiran: {filename}",
+                "filename": filename,
+                "filepath": filepath,
+                "dokument_id": dokument_id,
+                "download_url": download_url,
             }
         }
 

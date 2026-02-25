@@ -6,6 +6,7 @@ import { ChatMessage } from "@/types/chat";
 import { apiGenerateDocument } from "@/lib/api";
 import LuznarLogo from "@/components/brand/LuznarLogo";
 import ActionButtons from "./ActionButtons";
+import DocumentForm from "./DocumentForm";
 import { formatTime } from "@/lib/utils";
 
 const DOCUMENT_TYPES = [
@@ -19,9 +20,10 @@ interface MessageBubbleProps {
   message: ChatMessage;
   onConfirm: (actionId: string) => void;
   onReject: (actionId: string) => void;
+  onFormSubmit?: (docType: string, formData: Record<string, string>) => void;
 }
 
-export default function MessageBubble({ message, onConfirm, onReject }: MessageBubbleProps) {
+export default function MessageBubble({ message, onConfirm, onReject, onFormSubmit }: MessageBubbleProps) {
   const isUser = message.role === "user";
   const isSystem = message.role === "system";
   const [showDocMenu, setShowDocMenu] = useState(false);
@@ -114,6 +116,12 @@ export default function MessageBubble({ message, onConfirm, onReject }: MessageB
               actions={message.actions}
               onConfirm={onConfirm}
               onReject={onReject}
+            />
+          )}
+          {message.documentForm && message.documentForm.fields.length > 0 && onFormSubmit && (
+            <DocumentForm
+              form={message.documentForm}
+              onSubmit={onFormSubmit}
             />
           )}
         </div>

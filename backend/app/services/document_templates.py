@@ -12,12 +12,16 @@ profesionalen .docx z Luznar brandingom.
 """
 
 import io
+import os
+import logging
 from datetime import datetime
 from docx import Document
 from docx.shared import Pt, Inches, RGBColor, Cm, Emu
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.enum.table import WD_TABLE_ALIGNMENT, WD_ALIGN_VERTICAL
 from docx.oxml.ns import qn
+
+logger = logging.getLogger(__name__)
 
 
 # Luznar barve
@@ -73,6 +77,9 @@ Vrni SAMO JSON (brez markdown, brez ```), s točno temi ključi:
   "non_conformance_type": "tip neskladnosti (npr. Inadequate product quality - Missing mechanical features)",
   "description": "podroben opis napake (več stavkov, opisno)",
   "corrective_actions": ["seznam zahtevanih korektivnih ukrepov - vsak kot en stavek"],
+  "supplier_decision": "odločitev: Return to supplier / Rework at supplier / Replacement quantity (če ni podatka, pusti prazno)",
+  "deadline_4d": "rok za 4D poročilo (DD Month YYYY) - če ni podatka, izračunaj 7 dni od complaint_date",
+  "deadline_8d": "rok za 8D poročilo (DD Month YYYY) - če ni podatka, izračunaj 28 dni od complaint_date",
   "photo_descriptions": ["opisi fotografij če obstajajo"]
 }""",
 
@@ -132,6 +139,82 @@ Vrni SAMO JSON (brez markdown, brez ```), s točno temi ključi:
   "priloge": ["seznam prilog"]
 }""",
 }
+
+
+def extract_pdf_images(pdf_path: str, output_dir: str, start_page: int = 1, min_size: int = 10000) -> list[str]:
+    """
+    Izvleči slike iz PDF-ja z uporabo PyMuPDF.
+
+    Args:
+        pdf_path: pot do PDF datoteke
+        output_dir: direktorij za shranjevanje slik
+        start_page: od katere strani naprej (0-indexed interno, 1-indexed za uporabnika)
+        min_size: minimalna velikost slike v bajtih (filtrira majhne ikone/logotipe)
+
+    Returns:
+        seznam poti do ekstrahiranih slik
+    """
+    try:
+        import fitz  # PyMuPDF
+    except ImportError:
+        logger.warning("PyMuPDF ni nameščen - slike iz PDF ne bodo izvlečene")
+        return []
+
+    image_paths = []
+    os.makedirs(output_dir, exist_ok=True)
+
+    try:
+        pdf_doc = fitz.open(pdf_path)
+        for page_num in range(start_page, len(pdf_doc)):
+            page = pdf_doc[page_num]
+            images = page.get_images(full=True)
+
+            for img_idx, img in enumerate(images):
+                xref = img[0]
+                base_image = pdf_doc.extract_image(xref)
+
+                if not base_image:
+                    continue
+
+                image_bytes = base_image["image"]
+                # Preskoči majhne slike (logotipi, ikone)
+                if len(image_bytes) < min_size:
+                    continue
+
+                ext = base_image.get("ext", "png")
+                img_filename = f"page{page_num + 1}_img{img_idx + 1}.{ext}"
+                img_path = os.path.join(output_dir, img_filename)
+
+                with open(img_path, "wb") as f:
+                    f.write(image_bytes)
+
+                image_paths.append(img_path)
+                logger.info(f"[PDF] Extracted image: {img_filename} ({len(image_bytes)} bytes)")
+
+        pdf_doc.close()
+
+    except Exception as e:
+        logger.error(f"Napaka pri ekstrakciji slik iz PDF: {e}")
+
+    # Če ni slik iz xref, poskusi renderirati strani kot slike
+    if not image_paths:
+        try:
+            pdf_doc = fitz.open(pdf_path)
+            for page_num in range(start_page, len(pdf_doc)):
+                page = pdf_doc[page_num]
+                # Renderiraj stran kot sliko (150 DPI)
+                pix = page.get_pixmap(dpi=150)
+                img_filename = f"page{page_num + 1}_render.png"
+                img_path = os.path.join(output_dir, img_filename)
+                pix.save(img_path)
+                image_paths.append(img_path)
+                logger.info(f"[PDF] Rendered page as image: {img_filename}")
+
+            pdf_doc.close()
+        except Exception as e:
+            logger.error(f"Napaka pri renderiranju PDF strani: {e}")
+
+    return image_paths
 
 
 def generate_document(template_type: str, data: dict) -> io.BytesIO:
@@ -423,9 +506,36 @@ def _build_reklamacija(doc: Document, data: dict):
             run = p.add_run(str(action))
             run.font.size = Pt(10)
 
+    # ── SUPPLIER DECISION & DEADLINES ──
+    decision = data.get("supplier_decision", "")
+    deadline_4d = data.get("deadline_4d", "")
+    deadline_8d = data.get("deadline_8d", "")
+    if decision or deadline_4d or deadline_8d:
+        doc.add_paragraph().space_after = Pt(10)
+        _add_section_header_table(doc, "RESPONSE REQUIREMENTS")
+
+        deadline_data = []
+        if decision:
+            deadline_data.append(("Supplier Decision:", decision))
+        if deadline_4d:
+            deadline_data.append(("4D Report Deadline:", deadline_4d))
+        if deadline_8d:
+            deadline_data.append(("8D Report Deadline:", deadline_8d))
+
+        table = doc.add_table(rows=len(deadline_data), cols=2)
+        table.alignment = WD_TABLE_ALIGNMENT.CENTER
+        table.columns[0].width = Cm(5)
+        table.columns[1].width = Cm(11)
+
+        for i, (label, value) in enumerate(deadline_data):
+            _set_cell_text(table.cell(i, 0), label, bold=True, size=9)
+            _set_cell_text(table.cell(i, 1), value, bold=True, size=9, color=RED)
+
     # ── APPENDIX: PHOTOGRAPHIC EVIDENCE ──
     photo_descs = data.get("photo_descriptions", [])
-    if photo_descs:
+    image_paths = data.get("image_paths", [])
+
+    if photo_descs or image_paths:
         doc.add_page_break()
         _add_luznar_header(doc)
 
@@ -438,21 +548,45 @@ def _build_reklamacija(doc: Document, data: dict):
         run.font.color.rgb = NAVY
         run.bold = True
 
-        for desc in photo_descs:
-            p = doc.add_paragraph()
-            p.space_after = Pt(6)
-            run = p.add_run(str(desc))
-            run.font.size = Pt(10)
-            run.bold = True
+        # Vstavi dejanske slike iz PDF-ja
+        if image_paths:
+            for i, img_path in enumerate(image_paths):
+                try:
+                    desc = photo_descs[i] if i < len(photo_descs) else f"Image {i + 1}"
+                    p = doc.add_paragraph()
+                    p.space_after = Pt(4)
+                    run = p.add_run(str(desc))
+                    run.font.size = Pt(10)
+                    run.bold = True
 
-            # Placeholder za sliko
-            p = doc.add_paragraph()
-            p.alignment = WD_ALIGN_PARAGRAPH.CENTER
-            p.space_after = Pt(12)
-            run = p.add_run("[Fotografija - vstavi ročno]")
-            run.font.size = Pt(9)
-            run.font.color.rgb = GRAY
-            run.italic = True
+                    p = doc.add_paragraph()
+                    p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+                    p.space_after = Pt(12)
+                    run = p.add_run()
+                    run.add_picture(img_path, width=Cm(14))
+                except Exception:
+                    p = doc.add_paragraph()
+                    p.space_after = Pt(12)
+                    run = p.add_run(f"[Napaka pri vstavljanju slike: {img_path}]")
+                    run.font.size = Pt(9)
+                    run.font.color.rgb = GRAY
+                    run.italic = True
+        else:
+            # Samo opisi brez slik
+            for desc in photo_descs:
+                p = doc.add_paragraph()
+                p.space_after = Pt(6)
+                run = p.add_run(str(desc))
+                run.font.size = Pt(10)
+                run.bold = True
+
+                p = doc.add_paragraph()
+                p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+                p.space_after = Pt(12)
+                run = p.add_run("[Fotografija - vstavi ročno]")
+                run.font.size = Pt(9)
+                run.font.color.rgb = GRAY
+                run.italic = True
 
     _add_footer(doc)
 

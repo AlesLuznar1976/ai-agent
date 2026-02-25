@@ -48,6 +48,29 @@ async def list_dokumenti(
     return {"dokumenti": dokumenti, "total": len(dokumenti)}
 
 
+@router.get("/download-by-name/{filename}")
+async def download_by_filename(
+    filename: str,
+    current_user: TokenData = Depends(get_current_user),
+):
+    """Prenesi dokument po imenu datoteke (za dokumente brez projekt_id)."""
+    # Preveri da filename ne vsebuje path traversal
+    if ".." in filename or "/" in filename or "\\" in filename:
+        raise HTTPException(status_code=400, detail="Neveljavno ime datoteke")
+
+    doc_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "data", "documents")
+    filepath = os.path.join(doc_dir, filename)
+
+    if not os.path.exists(filepath):
+        raise HTTPException(status_code=404, detail="Datoteka ne obstaja")
+
+    return FileResponse(
+        filepath,
+        filename=filename,
+        media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    )
+
+
 @router.get("/{dokument_id}")
 async def get_dokument(
     dokument_id: int,

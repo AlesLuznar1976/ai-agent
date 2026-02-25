@@ -14,6 +14,7 @@ class DokumentTip(str, Enum):
     TIV = "TIV"
     DELOVNI_LIST = "Delovni list"
     PROIZVODNI = "Proizvodni"
+    REKLAMACIJA = "Reklamacija"
     DRUGO = "Drugo"
 
 

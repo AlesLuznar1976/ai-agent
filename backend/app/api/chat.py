@@ -224,6 +224,25 @@ async def send_message_with_files(
         current_project_id=projekt_id,
     )
 
+    # Shrani pending actions v DB (enako kot pri send_message)
+    response_actions = []
+    if agent_response.needs_confirmation and agent_response.actions:
+        for action_data in agent_response.actions:
+            db_action = akcije_crud.create_pending_action(
+                db,
+                user_id=current_user.user_id,
+                tip_akcije=action_data.get("tool_name", "unknown"),
+                opis=action_data.get("description", ""),
+                predlagani_podatki=action_data.get("arguments", {}),
+                projekt_id=projekt_id,
+            )
+            response_actions.append({
+                "id": f"action_{db_action.id}",
+                "description": action_data.get("description", ""),
+                "tool_name": action_data.get("tool_name", ""),
+                "status": "Čaka",
+            })
+
     # Shrani agent odgovor v DB
     chat_crud.add_message(
         db,
@@ -238,8 +257,87 @@ async def send_message_with_files(
         "timestamp": datetime.now().isoformat(),
         "attachments": attachment_metadata,
         "suggested_commands": agent_response.suggested_commands,
-        "needs_confirmation": False,
-        "actions": None,
+        "needs_confirmation": len(response_actions) > 0,
+        "actions": response_actions if response_actions else None,
+        "document_form": agent_response.document_form,
+    }
+
+
+class DocumentFormSubmit(BaseModel):
+    doc_type: str
+    form_data: dict
+    projekt_id: Optional[int] = None
+
+
+@router.post("/generate-from-form")
+async def generate_from_form(
+    request: DocumentFormSubmit,
+    current_user: TokenData = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Generiraj dokument iz izpolnjene forme — ustvari pending action."""
+
+    # Zberi analizo iz zadnjih chat sporočil (DESC = najnovejša prva)
+    from app.db_models.chat_history import DBChatMessage
+    recent_messages = (
+        db.query(DBChatMessage)
+        .filter(DBChatMessage.user_id == current_user.user_id)
+        .order_by(DBChatMessage.datum.desc())
+        .limit(10)
+        .all()
+    )
+    analysis_parts = []
+    for m in recent_messages:
+        if m.role == "agent" and len(m.content or "") > 200:
+            analysis_parts.append(m.content)
+
+    # Združi analizo + form podatke v content (najnovejša analiza prva)
+    content_parts = analysis_parts[:3] if analysis_parts else []
+    form_info = "\n\n--- DODATNI PODATKI ---\n"
+    for key, value in request.form_data.items():
+        if value:
+            form_info += f"{key}: {value}\n"
+    content_parts.append(form_info)
+    content = "\n\n".join(content_parts)
+
+    # Ustvari pending action
+    arguments = {
+        "doc_type": request.doc_type,
+        "content": content,
+    }
+    if request.projekt_id:
+        arguments["projekt_id"] = request.projekt_id
+
+    description = f"Generiraj {request.doc_type} dokument"
+    if request.projekt_id:
+        description += f" za projekt #{request.projekt_id}"
+
+    db_action = akcije_crud.create_pending_action(
+        db,
+        user_id=current_user.user_id,
+        tip_akcije="generate_document",
+        opis=description,
+        predlagani_podatki=arguments,
+        projekt_id=request.projekt_id,
+    )
+
+    # Shrani v chat history
+    chat_crud.add_message(
+        db,
+        user_id=current_user.user_id,
+        role="system",
+        content=f"[Formular izpolnjen] {description} — čaka potrditev.",
+        projekt_id=request.projekt_id,
+    )
+
+    return {
+        "message": f"{description} — prosim potrdite.",
+        "action": {
+            "id": f"action_{db_action.id}",
+            "description": description,
+            "tool_name": "generate_document",
+            "status": "Čaka",
+        },
     }
 
 
@@ -420,11 +518,18 @@ async def confirm_action(
         content=f"[Akcija potrjena] {result_message}",
     )
 
-    return {
+    response_data = {
         "message": result_message,
         "action": _format_action(action),
         "result": result.get("data"),
     }
+
+    # Dodaj download_url za generirane dokumente
+    result_data = result.get("data") or {}
+    if result_data.get("download_url"):
+        response_data["download_url"] = result_data["download_url"]
+
+    return response_data
 
 
 @router.post("/actions/{action_id}/reject")

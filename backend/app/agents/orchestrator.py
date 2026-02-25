@@ -10,7 +10,7 @@ import logging
 import re
 import httpx
 from typing import Optional
-from datetime import datetime
+from datetime import datetime, timedelta
 from pydantic import BaseModel
 
 logger = logging.getLogger(__name__)
@@ -44,7 +44,8 @@ TOOL_GROUPS: dict[str, tuple[set[str], set[str]]] = {
          "draft_email_response", "sync_emails"},
     ),
     "projekt": (
-        {"projekt", "rfq", "časovnic", "casovnic", "ustvari projekt", "posodobi projekt"},
+        {"projekt", "rfq", "časovnic", "casovnic", "ustvari projekt", "posodobi projekt",
+         "reklamacij", "dokument", "zapisnik", "word"},
         {"list_projects", "get_project_details", "create_project", "update_project",
          "generate_rfq_summary", "generate_document"},
     ),
@@ -66,14 +67,22 @@ _TOOL_BY_NAME: dict[str, dict] = {t["function"]["name"]: t for t in ALL_TOOLS}
 MAX_TOOLS = 12  # Ollama limit za zanesljivo tool calling
 
 
-def select_tools(message: str) -> list[dict]:
-    """Izberi relevantna orodja glede na uporabniško sporočilo (max MAX_TOOLS)."""
+def select_tools(message: str, conversation_history: Optional[list[dict]] = None) -> list[dict]:
+    """Izberi relevantna orodja glede na uporabniško sporočilo in kontekst (max MAX_TOOLS)."""
     msg_lower = message.lower()
+
+    # Združi trenutno sporočilo + zadnjih 5 sporočil iz zgodovine za kontekst
+    context_text = msg_lower
+    if conversation_history:
+        recent = conversation_history[-5:]
+        context_text += " " + " ".join(
+            (m.get("content", "") or "").lower() for m in recent
+        )
 
     selected_names: set[str] = set(CORE_TOOLS)
 
     for _group, (keywords, tool_names) in TOOL_GROUPS.items():
-        if any(kw in msg_lower for kw in keywords):
+        if any(kw in context_text for kw in keywords):
             selected_names |= tool_names
 
     # Če ni zadetek, dodaj najpogostejša
@@ -145,6 +154,13 @@ PRAVILA:
 14. Parametri za datume v orodjih so: date_from in date_to (NE datum_od/datum_do/start_date/end_date)
 15. Leto za datume je VEDNO {year} - NIKOLI ne uporabi 2023, 2024 ali 2025!
 
+GENERIRANJE DOKUMENTOV:
+- Ko uporabnik reče "generiraj zapisnik", "naredi dokument", "pripravi reklamacijo" ali podobno, pokliči generate_document tool
+- V parameter "content" VKLJUČI VSE relevantne podatke iz pogovora (analiza, roke, kontakti, odločitve)
+- Zberi vse podatke iz celotnega pogovora in jih vključi v content parameter
+- doc_type za reklamacijo je "Reklamacija"
+- Če imaš podatke o rokih (4D, 8D), odločitvi, kontaktih - OBVEZNO jih vključi v content
+
 KONTEKST:
 - Uporabnik: {username} (vloga: {role})
 - Aktiven projekt: {current_project}
@@ -160,6 +176,7 @@ class AgentResponse(BaseModel):
     needs_confirmation: bool = False
     suggested_commands: list[str] = []
     tool_calls_made: list[dict] = []
+    document_form: Optional[dict] = None
 
 
 class Orchestrator:
@@ -227,8 +244,8 @@ class Orchestrator:
         all_tool_calls = []
         pending_actions = []
 
-        # Izberi relevantna orodja za to sporočilo (max ~12 namesto 31)
-        selected = select_tools(message)
+        # Izberi relevantna orodja za to sporočilo + kontekst (max ~12 namesto 31)
+        selected = select_tools(message, conversation_history)
         print(f"[ORCHESTRATOR] Selected {len(selected)} tools: {[t['function']['name'] for t in selected]}", flush=True)
 
         for round_num in range(self.MAX_TOOL_ROUNDS):
@@ -394,6 +411,19 @@ class Orchestrator:
 
         now = datetime.now()
 
+        # Preveri ali uporabnik zahteva generiranje dokumenta
+        msg_lower = (message or "").lower()
+        doc_keywords = {"reklamacij", "zapisnik", "dokument", "generiraj", "naredi", "pripravi"}
+        wants_document = any(kw in msg_lower for kw in doc_keywords)
+
+        doc_instruction = ""
+        if wants_document:
+            doc_instruction = (
+                "\n\nUPORABNIK ŽELI GENERIRATI DOKUMENT iz priloženih datotek.\n"
+                "Analiziraj datoteke in izvleci VSE podatke. Bodi temeljit.\n"
+                "Uporabnik bo prejel formular za dopolnitev manjkajočih podatkov.\n"
+            )
+
         system_prompt = (
             f"JEZIK: Odgovarjaj IZKLJUČNO v SLOVENŠČINI. NIKOLI ne odgovarjaj v angleščini.\n\n"
             f"Si AI asistent za LUZNAR d.o.o. - podjetje za izdelavo elektronskih vezij (PCB, SMT montaža).\n"
@@ -412,6 +442,7 @@ class Orchestrator:
             f"Kontekst:\n"
             f"- Uporabnik: {username} (vloga: {user_role})\n"
             f"- Aktiven projekt: {current_project_id or 'ni izbran'}\n"
+            f"{doc_instruction}"
         )
 
         # Zgradi content blocks za Claude Messages API
@@ -464,9 +495,54 @@ class Orchestrator:
 
             logger.info(f"[ORCHESTRATOR] Claude response: {response_text[:200]}")
 
+            # Če uporabnik želi dokument, dodaj formular za manjkajoče podatke
+            document_form = None
+            if wants_document:
+                if "reklamacij" in msg_lower:
+                    doc_type = "Reklamacija"
+                    now_dt = datetime.now()
+                    document_form = {
+                        "doc_type": doc_type,
+                        "fields": [
+                            {"key": "deadline_4d", "label": "Rok za 4D poročilo", "type": "date",
+                             "value": (now_dt + timedelta(days=7)).strftime("%Y-%m-%d"),
+                             "required": True},
+                            {"key": "deadline_8d", "label": "Rok za 8D poročilo", "type": "date",
+                             "value": (now_dt + timedelta(days=28)).strftime("%Y-%m-%d"),
+                             "required": True},
+                            {"key": "supplier_code", "label": "Šifra dobavitelja (LARGO)", "type": "text",
+                             "placeholder": "npr. 100100", "required": False},
+                            {"key": "decision", "label": "Odločitev", "type": "select",
+                             "options": [
+                                 {"value": "Return to supplier", "label": "Vračilo dobavitelju"},
+                                 {"value": "Rework at supplier", "label": "Dodelava pri dobavitelju"},
+                                 {"value": "Rework at Luznar", "label": "Dodelava pri Luznar"},
+                                 {"value": "Replacement quantity", "label": "Nadomestna količina"},
+                                 {"value": "Credit note", "label": "Dobropis"},
+                             ],
+                             "required": True},
+                            {"key": "supplier_contact", "label": "Kontakt dobavitelja (ime, email)", "type": "text",
+                             "placeholder": "npr. Chris Zhang, chris@pcbwin.com", "required": False},
+                            {"key": "costs", "label": "Stroški reklamacije", "type": "text",
+                             "placeholder": "npr. logistika, pregled, testiranje", "required": False},
+                            {"key": "notes", "label": "Dodatne opombe", "type": "textarea",
+                             "placeholder": "Dodatne informacije za zapisnik...", "required": False},
+                        ],
+                    }
+                elif "bom" in msg_lower or "kosovnic" in msg_lower:
+                    doc_type = "BOM"
+                    document_form = {"doc_type": doc_type, "fields": []}
+                elif "tiv" in msg_lower or "rfq" in msg_lower:
+                    doc_type = "TIV"
+                    document_form = {"doc_type": doc_type, "fields": []}
+                elif "ponudb" in msg_lower:
+                    doc_type = "Ponudba"
+                    document_form = {"doc_type": doc_type, "fields": []}
+
             return AgentResponse(
                 message=response_text,
                 suggested_commands=self._suggest_commands(response_text),
+                document_form=document_form,
             )
 
         except Exception as e:

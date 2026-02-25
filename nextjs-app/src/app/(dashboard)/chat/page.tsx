@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect, useCallback } from "react";
 import { ChatMessage } from "@/types/chat";
-import { apiSendMessage, apiConfirmAction, apiRejectAction } from "@/lib/api";
+import { apiSendMessage, apiConfirmAction, apiRejectAction, apiSubmitDocumentForm } from "@/lib/api";
 import ChatWelcome from "@/components/chat/ChatWelcome";
 import MessageBubble from "@/components/chat/MessageBubble";
 import TypingIndicator from "@/components/chat/TypingIndicator";
@@ -67,7 +67,7 @@ export default function ChatPage() {
 
   const handleConfirm = async (actionId: string) => {
     try {
-      await apiConfirmAction(actionId);
+      const result = await apiConfirmAction(actionId);
       setMessages((prev) =>
         prev.map((msg) => ({
           ...msg,
@@ -76,8 +76,53 @@ export default function ChatPage() {
           ),
         }))
       );
+
+      // Sproži download če je bil generiran dokument
+      if (result?.download_url) {
+        const token = localStorage.getItem("access_token");
+        const response = await fetch(`/api${result.download_url}`, {
+          headers: token ? { Authorization: `Bearer ${token}` } : {},
+        });
+        if (response.ok) {
+          const blob = await response.blob();
+          const url = window.URL.createObjectURL(blob);
+          const a = document.createElement("a");
+          a.href = url;
+          const disposition = response.headers.get("Content-Disposition");
+          const filenameMatch = disposition?.match(/filename="?([^"]+)"?/);
+          a.download = filenameMatch?.[1] || "dokument.docx";
+          document.body.appendChild(a);
+          a.click();
+          window.URL.revokeObjectURL(url);
+          a.remove();
+        }
+      }
     } catch {
       // silently fail
+    }
+  };
+
+  const handleFormSubmit = async (docType: string, formData: Record<string, string>) => {
+    try {
+      const result = await apiSubmitDocumentForm(docType, formData);
+      // Dodaj sistemsko sporočilo z akcijo za potrditev
+      const actionMsg: ChatMessage = {
+        role: "agent",
+        content: result.message,
+        timestamp: new Date().toISOString(),
+        needsConfirmation: true,
+        actions: [{ ...result.action, status: result.action.status as "Čaka" }],
+      };
+      setMessages((prev) => [...prev, actionMsg]);
+    } catch {
+      setMessages((prev) => [
+        ...prev,
+        {
+          role: "system",
+          content: "Napaka pri pošiljanju formularja.",
+          timestamp: new Date().toISOString(),
+        },
+      ]);
     }
   };
 
@@ -109,6 +154,7 @@ export default function ChatPage() {
               message={msg}
               onConfirm={handleConfirm}
               onReject={handleReject}
+              onFormSubmit={handleFormSubmit}
             />
           ))}
           {isLoading && <TypingIndicator />}

@@ -27,6 +27,7 @@ services:
       - CORS_ORIGINS=${CORS_ORIGINS}
     volumes:
       - ./data/documents:/app/documents
+      - ./data/documents:/app/data/documents
       - ./data/logs:/app/logs
       - ./data/chat_uploads:/app/data/chat_uploads
     depends_on:

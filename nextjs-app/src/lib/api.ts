@@ -167,7 +167,7 @@ export async function apiGetChatHistory(projektId?: number): Promise<ChatMessage
 }
 
 export async function apiConfirmAction(actionId: string) {
-  return request<void>(`/chat/actions/${actionId}/confirm`, { method: "POST" });
+  return request<{ message: string; download_url?: string }>(`/chat/actions/${actionId}/confirm`, { method: "POST" });
 }
 
 export async function apiRejectAction(actionId: string) {
@@ -213,6 +213,20 @@ export async function apiTriggerAnalysis(emailId: number) {
 }
 
 // Parsers
+export async function apiSubmitDocumentForm(
+  docType: string,
+  formData: Record<string, string>,
+  projektId?: number,
+) {
+  return request<{ message: string; action: { id: string; description: string; tool_name: string; status: string } }>(
+    "/chat/generate-from-form",
+    {
+      method: "POST",
+      body: JSON.stringify({ doc_type: docType, form_data: formData, projekt_id: projektId }),
+    }
+  );
+}
+
 function parseChatMessage(data: Record<string, unknown>, defaultRole?: string): ChatMessage {
   return {
     role: (data.role as ChatMessage["role"]) || (defaultRole as ChatMessage["role"]) || "agent",
@@ -223,6 +237,7 @@ function parseChatMessage(data: Record<string, unknown>, defaultRole?: string): 
     actions: data.actions as ChatMessage["actions"],
     suggestedCommands: data.suggested_commands as string[] | undefined,
     attachments: data.attachments as ChatAttachment[] | undefined,
+    documentForm: data.document_form as ChatMessage["documentForm"],
   };
 }
 
