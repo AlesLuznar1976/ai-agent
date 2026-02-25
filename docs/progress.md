@@ -1,7 +1,7 @@
 # Progress: Luznar AI Agent - Spremljanje napredka
 
-**Zadnja posodobitev**: 2026-02-25 (v2)
-**Verzija**: 1.1
+**Zadnja posodobitev**: 2026-02-25 (v3)
+**Verzija**: 1.2
 **Status**: Aktivno v razvoju in produkciji
 
 ---
@@ -25,7 +25,7 @@
 | 1.1 | Docker Compose setup (backend, web, ollama) | ✅ | 2026-02 | Vsi 3 servisi tečejo |
 | 1.2 | Backend FastAPI na portu 8000 | ✅ | 2026-02 | ghcr.io/alesluznar1976/ai-agent-backend |
 | 1.3 | Frontend Next.js na portu 9090 | ✅ | 2026-02 | ghcr.io/alesluznar1976/ai-agent-web, Next.js proxy za API |
-| 1.4 | Ollama na portu 11434 | ✅ | 2026-02 | Z NVIDIA GPU podporo |
+| 1.4 | Ollama na portu 11434 | ✅ | 2026-02 | Z NVIDIA RTX 5080 GPU (16GB VRAM) |
 | 1.5 | SQL Server baza (LARGO ERP) | ✅ | 2026-02 | Povezava na LUZNAR-2018\LARGO |
 | 1.6 | GHCR container registry | ✅ | 2026-02 | Avtomatski build & push |
 | 1.7 | SMB file share (\\192.168.0.113\izdelki) | ✅ | 2026-02 | Za projektne mape |
@@ -55,7 +55,7 @@
 
 | # | Naloga | Status | Datum | Opombe |
 |---|--------|--------|-------|--------|
-| 3.1 | Tekstovni chat z AI agentom | ✅ | 2026-02 | Ollama tool use loop |
+| 3.1 | Tekstovni chat z AI agentom | ✅ | 2026-02 | Ollama qwen3:14b, tool use loop, smart tool selector |
 | 3.2 | Zgodovina pogovorov v SQL bazi | ✅ | 2026-02 | ai_agent.ChatHistory |
 | 3.3 | Predlagani ukazi (suggested commands) | ✅ | 2026-02 | Dinamično glede na kontekst |
 | 3.4 | Potrditveni dialog za write operacije | ✅ | 2026-02 | Pending actions (Čakajoče akcije) |
@@ -125,7 +125,7 @@
 | 6.8 | Delovni postopki (DelPostopek) | ✅ | 2026-02 | get_work_operations |
 | 6.9 | Proizvodnja (PotekDelovnegaNaloga) | ✅ | 2026-02 | get_production_status |
 | 6.10 | Kalkulacije | ✅ | 2026-02 | get_calculations |
-| 6.11 | Štetje zapisov | ✅ | 2026-02 | count_records (14 tabel) |
+| 6.11 | Štetje zapisov | ✅ | 2026-02 | count_records (14 dbo + 4 ai_agent tabel) |
 | 6.12 | Custom SQL poizvedbe | ✅ | 2026-02 | run_custom_query (samo SELECT) |
 | 6.13 | Claude SQL skripta | ✅ | 2026-02 | ask_claude_for_script |
 | 6.14 | Claude Python analiza | ✅ | 2026-02 | ask_claude_for_analysis + sandbox |
@@ -155,20 +155,21 @@
 
 | # | Naloga | Status | Datum | Opombe |
 |---|--------|--------|-------|--------|
-| 8.1 | Ollama orchestrator (tool use loop) | ✅ | 2026-02 | llama3:8b / qwen3 |
-| 8.2 | Claude Sonnet 4.5 za SQL/Python | ✅ | 2026-02 | claude_scriptwriter.py |
-| 8.3 | Claude Opus 4.6 za vision | ✅ | 2026-02-25 | process_with_files() |
-| 8.4 | LLM Router (local vs cloud) | ✅ | 2026-02 | app/llm/router.py |
-| 8.5 | Email Agent (kategorizacija) | ✅ | 2026-02 | email_agent.py |
-| 8.6 | Python Executor (sandbox) | ✅ | 2026-02 | 30s timeout, safe builtins |
-| 8.7 | System prompt v slovenščini | ✅ | 2026-02 | 89 vrstic, datum injiciran |
-| 8.8 | Multi-agent arhitektura (Router) | 📋 | - | research.md - Faza 1 |
-| 8.9 | Nabavni Agent | 📋 | - | research.md - 10 orodij |
-| 8.10 | Proizvodni Agent | 📋 | - | research.md - 8 orodij |
-| 8.11 | Analitični Agent | 📋 | - | research.md - Claude Sonnet |
-| 8.12 | Dokumentni Agent | 📋 | - | research.md - Claude Opus vision |
-| 8.13 | Projektni Agent | 📋 | - | research.md - 7 orodij |
-| 8.14 | Email Agent v2 (specializiran) | 📋 | - | research.md - 9 orodij |
+| 8.1 | Ollama orchestrator (tool use loop) | ✅ | 2026-02 | qwen3:14b na GPU, smart tool selector |
+| 8.2 | Smart tool selector | ✅ | 2026-02-25 | Izbere ~9 relevantnih orodij (od 31) glede na sporočilo |
+| 8.3 | Claude Sonnet 4.5 za SQL/Python | ✅ | 2026-02 | claude_scriptwriter.py |
+| 8.4 | Claude Opus 4.6 za vision | ✅ | 2026-02-25 | process_with_files() |
+| 8.5 | LLM Router (local vs cloud) | ✅ | 2026-02 | app/llm/router.py |
+| 8.6 | Email Agent (kategorizacija) | ✅ | 2026-02 | email_agent.py |
+| 8.7 | Python Executor (sandbox) | ✅ | 2026-02 | 30s timeout, safe builtins |
+| 8.8 | System prompt v slovenščini | ✅ | 2026-02 | 89 vrstic, datum injiciran |
+| 8.9 | Multi-agent arhitektura (Router) | 📋 | - | research.md - Faza 1 |
+| 8.10 | Nabavni Agent | 📋 | - | research.md - 10 orodij |
+| 8.11 | Proizvodni Agent | 📋 | - | research.md - 8 orodij |
+| 8.12 | Analitični Agent | 📋 | - | research.md - Claude Sonnet |
+| 8.13 | Dokumentni Agent | 📋 | - | research.md - Claude Opus vision |
+| 8.14 | Projektni Agent | 📋 | - | research.md - 7 orodij |
+| 8.15 | Email Agent v2 (specializiran) | 📋 | - | research.md - 9 orodij |
 
 ---
 
@@ -234,8 +235,9 @@
 | 12.1 | ~~File upload iz brskalnika ne deluje~~ | ~~Visoka~~ | ✅ | **POPRAVLJENO** (2026-02-25): Vzrok je bil cross-origin fetch iz :9090 na :8000. Rešitev: Next.js rewrites proxy — vsi /api/* klici gredo same-origin skozi Next.js, ki interno preusmeri na backend. |
 | 12.2 | Markdown renderiranje po file upload | Srednja | ⚠️ | Ni potrjeno ali deluje po posodobitvi system prompta |
 | 12.3 | Chat streaming | Nizka | ❌ | Ni implementirano - uporabnik čaka cel odgovor |
-| 12.4 | Ollama počasen pri tool use | Nizka | ⚠️ | Ollama včasih timeout, fallback na cloud (Claude). Pogovor traja do 2.5 min. ProxyTimeout dvignjen na 180s. |
-| 12.5 | Ollama model ne podpira tool use zanesljivo | Srednja | ⚠️ | `Lokalni LLM napaka: , poskušam cloud...` — llama3:8b tool calling pogosto failira, rabi boljši model (qwen3:14b ali qwen3:30b) |
+| 12.4 | ~~Ollama počasen pri tool use~~ | ~~Nizka~~ | ✅ | **POPRAVLJENO** (2026-02-25): Zamenjava na qwen3:14b z GPU + smart tool selector (~9 orodij). Iskanje partnerja: 2.9s, štetje: 23s. |
+| 12.5 | ~~Ollama model ne podpira tool use zanesljivo~~ | ~~Srednja~~ | ✅ | **POPRAVLJENO** (2026-02-25): qwen3:14b zanesljivo kliče orodja. Problem je bil llama3:8b + 31 orodij naenkrat. Smart tool selector pošlje max 12. |
+| 12.6 | LLM Router email kategorizacija faila | Nizka | ⚠️ | `Lokalni LLM napaka: , poskušam cloud...` — LLMRouter (local_llm.py) za email kategorizacijo občasno failira, padec na cloud. Ni kritično. |
 
 ---
 
@@ -248,7 +250,7 @@
 | ~~A1~~ | ~~Popravi file upload iz brskalnika~~ | ~~🔴~~ | ✅ **KONČANO** |
 | A2 | Preveri markdown renderiranje (#12.2) | 🟡 Srednja | - |
 | A3 | Testiraj document generation end-to-end | 🟡 Srednja | - |
-| A4 | Zamenjaj Ollama tool model (qwen3:14b ali 30b) | 🔴 Visoka | #12.5 - izboljša hitrost chata |
+| ~~A4~~ | ~~Zamenjaj Ollama tool model~~ | ~~🔴~~ | ✅ **KONČANO** — qwen3:14b + smart tool selector |
 | A5 | Testiraj file upload iz dejanskega brskalnika | 🟡 Srednja | Ročni test s strani uporabnika |
 
 ### Srednjeročno (2-4 tedne)
@@ -280,16 +282,16 @@
 
 | # | Hash | Opis |
 |---|------|------|
-| 1 | 5047145 | Add agent mailbox for automatic project creation from forwarded emails |
-| 2 | 0d74ac7 | Add personalized email dashboard with category grouping and mailbox filtering |
-| 3 | 449ac15 | Fix email analysis result not displaying in detail view |
-| 4 | 73dba1c | Improve orchestrator prompts, add Python analysis executor, cleanup models |
-| 5 | 1ef9f2a | Fix missing DB model columns and CRUD for email analysis |
-| 6 | b3ec6b3 | Exclude calcuquote.com emails from RFQ/Naročilo categorization |
-| 7 | bf6729d | Replace Flutter frontend with Next.js app |
-| 8 | c5bd5d5 | Restrict RFQ/Naročilo categorization to specific mailboxes |
-| 9 | 23036ee | Add RFQ sub-categorization (rfq_podkategorija) with two-phase classification |
-| 10 | 176e648 | Fix mailbox filter to match full email addresses |
+| 1 | d4faf43 | Switch to qwen3:14b with smart tool selector for faster chat responses |
+| 2 | 610c9b5 | Add chat file upload, Claude vision, document generation, and Next.js API proxy |
+| 3 | 5047145 | Add agent mailbox for automatic project creation from forwarded emails |
+| 4 | 0d74ac7 | Add personalized email dashboard with category grouping and mailbox filtering |
+| 5 | 449ac15 | Fix email analysis result not displaying in detail view |
+| 6 | 73dba1c | Improve orchestrator prompts, add Python analysis executor, cleanup models |
+| 7 | 1ef9f2a | Fix missing DB model columns and CRUD for email analysis |
+| 8 | b3ec6b3 | Exclude calcuquote.com emails from RFQ/Naročilo categorization |
+| 9 | bf6729d | Replace Flutter frontend with Next.js app |
+| 10 | c5bd5d5 | Restrict RFQ/Naročilo categorization to specific mailboxes |
 
 ---
 
@@ -323,6 +325,44 @@
 ---
 
 ## 17. Dnevnik sprememb
+
+### 2026-02-25 (v3) — Perf: qwen3:14b + smart tool selector
+
+**Problem**: Ollama `llama3:8b` ni zanesljivo podpiral tool calling (31 orodij). Chat je trajal 2.5+ min ali timeout. Tudi `qwen3:14b` in `qwen3:30b` ne zmoreta 31 orodij naenkrat — prazen odgovor ali timeout.
+
+**Rešitev**: Tri spremembe:
+1. **Model**: `llama3:8b` → `qwen3:14b` (boljši tool calling, slovenščina)
+2. **Smart tool selector**: Orchestrator izbere ~9 relevantnih orodij (od 31) glede na ključne besede v sporočilu. 5 domenskih skupin: nabava, email, projekt, proizvodnja, analitika.
+3. **GPU**: Restart Ollama containerja za pravilno GPU alokacijo (qwen3:14b = 9.7GB VRAM na RTX 5080)
+
+**Spremenjene datoteke:**
+
+| Datoteka | Sprememba |
+|----------|-----------|
+| `backend/app/agents/orchestrator.py` | Dodan `select_tools()` z TOOL_GROUPS, CORE_TOOLS, MAX_TOOLS=12 |
+| `backend/app/agents/tool_executor.py` | `count_records` podpira ai_agent schema (Projekti, Emaili, ...) |
+| `backend/app/config.py` | Default model: `llama3:8b` → `qwen3:14b` |
+| `backend/app/db_models/akcija.py` | Dodan manjkajoč `user_id` in `rezultat` stolpec |
+| `docker-compose.yml` | `OLLAMA_TOOL_MODEL` default: `qwen3:14b` |
+
+**Testi (vsi uspešni, z GPU):**
+
+| Test | HTTP | Čas | Prej |
+|------|------|-----|------|
+| "Koliko projektov imamo?" | 200 OK | **23s** | timeout |
+| "Poišči partnerja Heusinkveld" | 200 OK | **2.9s** | 154s+ |
+
+**Domenski tool selector:**
+
+| Ključne besede | Skupina | Primer orodij |
+|----------------|---------|---------------|
+| naročil, partner, dobavitelj | nabava | search_orders, get_invoices, ... |
+| email, mail, povzetek | email | get_emails, summarize_emails, ... |
+| projekt, rfq | projekt | list_projects, create_project, ... |
+| zaloge, bom, proizvodnja | proizvodnja | get_stock_info, get_bom, ... |
+| analiz, trend, python | analitika | ask_claude_for_script, ... |
+
+---
 
 ### 2026-02-25 (v2) — Fix: File upload iz brskalnika
 
