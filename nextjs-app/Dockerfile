@@ -9,7 +9,7 @@ FROM node:20-alpine AS builder
 WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
-ENV NEXT_PUBLIC_API_BASE_URL=http://192.168.0.66:8000/api
+ENV BACKEND_URL=http://backend:8000
 RUN npm run build
 
 # Stage 3: Production

@@ -12,6 +12,8 @@ from app.models import (
 from app.database import get_db
 from app.crud import projekti as crud_projekti
 from app.crud import dokumenti as crud_dokumenti
+from app.crud import emaili as crud_emaili
+from app.api.emaili import db_email_to_response
 
 router = APIRouter()
 
@@ -54,6 +56,45 @@ async def list_projekti(
 
     projekti = [db_projekt_to_response(p) for p in db_projekti]
     return {"projekti": projekti, "total": len(projekti)}
+
+
+@router.get("/{projekt_id}/full")
+async def get_projekt_full(
+    projekt_id: int,
+    current_user: TokenData = Depends(require_permission(Permission.PROJECT_VIEW)),
+    db: Session = Depends(get_db),
+):
+    """Projekt s povezanimi emaili in časovnico"""
+
+    db_projekt = crud_projekti.get_projekt_by_id(db, projekt_id)
+    if not db_projekt:
+        raise HTTPException(status_code=404, detail="Projekt ne obstaja")
+
+    # Povezani emaili
+    db_emaili = crud_emaili.list_emaili(db, projekt_id=projekt_id)
+    emaili = [db_email_to_response(e) for e in db_emaili]
+
+    # Časovnica
+    db_casovnica = crud_projekti.get_casovnica(db, projekt_id)
+    casovnica = [
+        {
+            "id": c.id,
+            "projekt_id": c.projekt_id,
+            "dogodek": c.dogodek,
+            "opis": c.opis,
+            "stara_vrednost": c.stara_vrednost,
+            "nova_vrednost": c.nova_vrednost,
+            "datum": c.datum.isoformat() if c.datum else None,
+            "uporabnik_ali_agent": c.uporabnik_ali_agent,
+        }
+        for c in db_casovnica
+    ]
+
+    return {
+        "projekt": db_projekt_to_response(db_projekt),
+        "emaili": emaili,
+        "casovnica": casovnica,
+    }
 
 
 @router.get("/{projekt_id}")

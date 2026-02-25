@@ -5,20 +5,26 @@ Zgodovina pogovorov in pending actions so shranjeni v SQL Server bazi
 (ai_agent.ChatHistory in ai_agent.CakajočeAkcije).
 """
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Form, File, UploadFile
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from typing import Optional
 from datetime import datetime
 from sqlalchemy.orm import Session
+from pathlib import Path
 import json
+import os
 
 from app.auth import get_current_user
 from app.models import TokenData
 from app.database import get_db
+from app.config import get_settings
 from app.agents.orchestrator import get_orchestrator
 from app.agents.tool_executor import get_tool_executor
 from app.crud import chat_history as chat_crud
 from app.crud import akcije as akcije_crud
+
+settings = get_settings()
 
 router = APIRouter()
 
@@ -145,6 +151,188 @@ async def send_message(
         needs_confirmation=len(response_actions) > 0,
         suggested_commands=agent_response.suggested_commands,
         tool_calls=agent_response.tool_calls_made if agent_response.tool_calls_made else None,
+    )
+
+
+@router.post("/with-files")
+async def send_message_with_files(
+    message: str = Form(""),
+    projekt_id: Optional[int] = Form(None),
+    files: list[UploadFile] = File([]),
+    current_user: TokenData = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Pošlji sporočilo z datotekami - uporabi Claude Opus 4 za analizo."""
+    import logging
+    logger = logging.getLogger(__name__)
+    logger.info(f"[WITH-FILES] Received: message='{message[:50]}', files={len(files)}, user={current_user.user_id}")
+    print(f"[WITH-FILES] Received: message='{message[:50]}', files={len(files)}, user={current_user.user_id}", flush=True)
+
+    from app.services.file_processor import process_uploaded_file
+
+    # Pripravi upload direktorij
+    upload_dir = Path("data/chat_uploads") / str(current_user.user_id) / datetime.now().strftime("%Y%m%d_%H%M%S")
+    upload_dir.mkdir(parents=True, exist_ok=True)
+
+    # Shrani datoteke in jih procesiraj
+    file_infos = []
+    attachment_metadata = []
+
+    for upload_file in files:
+        # Shrani datoteko
+        filename = upload_file.filename or "unknown"
+        filepath = upload_dir / filename
+        content = await upload_file.read()
+        with open(filepath, "wb") as f:
+            f.write(content)
+
+        mime_type = upload_file.content_type or "application/octet-stream"
+
+        # Procesiraj za Claude
+        file_info = process_uploaded_file(str(filepath), mime_type)
+        file_infos.append(file_info)
+
+        # Metadata za frontend
+        attachment_metadata.append({
+            "filename": filename,
+            "size": len(content),
+            "mime_type": mime_type,
+        })
+
+    # Shrani user sporočilo v DB
+    content_for_db = message
+    if attachment_metadata:
+        filenames = ", ".join(a["filename"] for a in attachment_metadata)
+        content_for_db = f"{message}\n[Priložene datoteke: {filenames}]" if message else f"[Priložene datoteke: {filenames}]"
+
+    chat_crud.add_message(
+        db,
+        user_id=current_user.user_id,
+        role="user",
+        content=content_for_db,
+        projekt_id=projekt_id,
+    )
+
+    # Pokliči orchestrator s datotekami
+    orchestrator = get_orchestrator()
+    agent_response = await orchestrator.process_with_files(
+        message=message,
+        file_infos=file_infos,
+        user_id=current_user.user_id,
+        username=current_user.username,
+        user_role=getattr(current_user, 'role', 'user'),
+        current_project_id=projekt_id,
+    )
+
+    # Shrani agent odgovor v DB
+    chat_crud.add_message(
+        db,
+        user_id=current_user.user_id,
+        role="agent",
+        content=agent_response.message,
+        projekt_id=projekt_id,
+    )
+
+    return {
+        "response": agent_response.message,
+        "timestamp": datetime.now().isoformat(),
+        "attachments": attachment_metadata,
+        "suggested_commands": agent_response.suggested_commands,
+        "needs_confirmation": False,
+        "actions": None,
+    }
+
+
+class ExportWordRequest(BaseModel):
+    content: str
+    title: str = "Analiza"
+
+
+@router.post("/export-word")
+async def export_to_word(
+    request: ExportWordRequest,
+    current_user: TokenData = Depends(get_current_user),
+):
+    """Pretvori markdown tekst v Word dokument."""
+    from app.services.markdown_to_word import markdown_to_docx
+
+    buffer = markdown_to_docx(request.content, title=request.title)
+
+    filename = f"{request.title.replace(' ', '_')}.docx"
+    return StreamingResponse(
+        buffer,
+        media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+class GenerateDocumentRequest(BaseModel):
+    content: str
+    template_type: str  # reklamacija, rfq_analiza, bom_pregled, porocilo
+
+
+@router.post("/generate-document")
+async def generate_document(
+    request: GenerateDocumentRequest,
+    current_user: TokenData = Depends(get_current_user),
+):
+    """Generiraj profesionalen Word dokument iz chat analize."""
+    import anthropic
+    from app.services.document_templates import (
+        generate_document as gen_doc,
+        DOCUMENT_TYPES,
+        EXTRACTION_PROMPTS,
+    )
+
+    if request.template_type not in DOCUMENT_TYPES:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Neznan tip predloge: {request.template_type}. Možnosti: {list(DOCUMENT_TYPES.keys())}",
+        )
+
+    if not settings.anthropic_api_key:
+        raise HTTPException(status_code=500, detail="Anthropic API ključ ni konfiguriran.")
+
+    # Claude ekstrahira strukturirane podatke iz analize
+    extraction_prompt = EXTRACTION_PROMPTS[request.template_type]
+
+    try:
+        client = anthropic.AsyncAnthropic(api_key=settings.anthropic_api_key)
+        response = await client.messages.create(
+            model=settings.anthropic_model,
+            max_tokens=2000,
+            messages=[{
+                "role": "user",
+                "content": f"{extraction_prompt}\n\n---\nVSEBINA ZA ANALIZO:\n{request.content}",
+            }],
+        )
+
+        raw_json = response.content[0].text.strip()
+
+        # Odstrani morebitne markdown code block oznake
+        if raw_json.startswith("```"):
+            raw_json = raw_json.split("\n", 1)[-1]
+        if raw_json.endswith("```"):
+            raw_json = raw_json.rsplit("```", 1)[0]
+        raw_json = raw_json.strip()
+
+        data = json.loads(raw_json)
+
+    except json.JSONDecodeError as e:
+        raise HTTPException(status_code=500, detail=f"Claude ni vrnil veljavnega JSON: {str(e)}")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Napaka pri klicu Claude: {str(e)}")
+
+    # Generiraj Word dokument
+    buffer = gen_doc(request.template_type, data)
+
+    template_info = DOCUMENT_TYPES[request.template_type]
+    filename = f"{template_info['title'].replace(' ', '_')}_{datetime.now().strftime('%Y%m%d')}.docx"
+
+    return StreamingResponse(
+        buffer,
+        media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
 
 

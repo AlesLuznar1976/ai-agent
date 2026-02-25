@@ -27,27 +27,36 @@ export default function ChatPage() {
     scrollToBottom();
   }, [messages, isLoading, scrollToBottom]);
 
-  const sendMessage = async (text: string) => {
+  const sendMessage = async (text: string, files?: File[]) => {
+    const attachments = files?.map((f) => ({
+      filename: f.name,
+      size: f.size,
+      mime_type: f.type || "application/octet-stream",
+    }));
+
     const userMsg: ChatMessage = {
       role: "user",
       content: text,
       timestamp: new Date().toISOString(),
+      attachments,
     };
     setMessages((prev) => [...prev, userMsg]);
     setIsLoading(true);
 
     try {
-      const response = await apiSendMessage(text);
+      const response = await apiSendMessage(text, undefined, files);
       setMessages((prev) => [...prev, response]);
       if (response.suggestedCommands?.length) {
         setSuggestedCommands(response.suggestedCommands);
       }
-    } catch {
+    } catch (err) {
+      const errorMsg = err instanceof Error ? err.message : "Neznana napaka";
+      console.error("Chat error:", err);
       setMessages((prev) => [
         ...prev,
         {
           role: "system",
-          content: "Napaka: Ne morem se povezati s strežnikom.",
+          content: `Napaka: ${errorMsg}`,
           timestamp: new Date().toISOString(),
         },
       ]);

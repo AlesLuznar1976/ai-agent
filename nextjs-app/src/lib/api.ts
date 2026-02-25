@@ -1,9 +1,9 @@
-import { ChatMessage } from "@/types/chat";
+import { ChatAttachment, ChatMessage } from "@/types/chat";
 import { Email } from "@/types/email";
-import { Projekt } from "@/types/projekt";
+import { Projekt, ProjektCasovnica, ProjektFull } from "@/types/projekt";
 import { User } from "@/types/user";
 
-const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || "http://192.168.0.66:8000/api";
+const API_BASE = "/api";
 
 function getHeaders(): HeadersInit {
   const token = typeof window !== "undefined" ? localStorage.getItem("access_token") : null;
@@ -44,12 +44,120 @@ export async function apiRefreshToken(refreshToken: string) {
 }
 
 // Chat
-export async function apiSendMessage(message: string, projektId?: number) {
+export async function apiSendMessage(message: string, projektId?: number, files?: File[]) {
+  if (files && files.length > 0) {
+    return apiSendMessageWithFiles(message, files, projektId);
+  }
   const data = await request<Record<string, unknown>>("/chat", {
     method: "POST",
     body: JSON.stringify({ message, ...(projektId ? { projekt_id: projektId } : {}) }),
   });
   return parseChatMessage(data, "agent");
+}
+
+export async function apiSendMessageWithFiles(
+  message: string,
+  files: File[],
+  projektId?: number
+): Promise<ChatMessage> {
+  const token = typeof window !== "undefined" ? localStorage.getItem("access_token") : null;
+
+  const formData = new FormData();
+  formData.append("message", message);
+  if (projektId) {
+    formData.append("projekt_id", String(projektId));
+  }
+  for (const file of files) {
+    formData.append("files", file);
+  }
+
+  // AbortController za 3-minutni timeout (Claude vision analiza traja)
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 180_000);
+
+  try {
+    const res = await fetch(`${API_BASE}/chat/with-files`, {
+      method: "POST",
+      headers: {
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      body: formData,
+      signal: controller.signal,
+    });
+
+    clearTimeout(timeoutId);
+
+    if (!res.ok) {
+      const errBody = await res.text().catch(() => "");
+      throw new Error(`Napaka ${res.status}: ${errBody || res.statusText}`);
+    }
+
+    const data = await res.json();
+    return parseChatMessage(data, "agent");
+  } catch (err) {
+    clearTimeout(timeoutId);
+    if (err instanceof DOMException && err.name === "AbortError") {
+      throw new Error("Časovna omejitev presežena (3 min). Poskusite z manjšo datoteko.");
+    }
+    throw err;
+  }
+}
+
+export async function apiExportWord(content: string, title: string = "Analiza"): Promise<void> {
+  const token = typeof window !== "undefined" ? localStorage.getItem("access_token") : null;
+
+  const res = await fetch(`${API_BASE}/chat/export-word`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+    body: JSON.stringify({ content, title }),
+  });
+
+  if (!res.ok) {
+    throw new Error(`API error: ${res.status}`);
+  }
+
+  const blob = await res.blob();
+  const url = window.URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `${title.replace(/\s+/g, "_")}.docx`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  window.URL.revokeObjectURL(url);
+}
+
+export async function apiGenerateDocument(content: string, templateType: string): Promise<void> {
+  const token = typeof window !== "undefined" ? localStorage.getItem("access_token") : null;
+
+  const res = await fetch(`${API_BASE}/chat/generate-document`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+    body: JSON.stringify({ content, template_type: templateType }),
+  });
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: "Napaka" }));
+    throw new Error(err.detail || `API error: ${res.status}`);
+  }
+
+  const blob = await res.blob();
+  const url = window.URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  const disposition = res.headers.get("content-disposition");
+  const filenameMatch = disposition?.match(/filename="(.+)"/);
+  a.download = filenameMatch ? filenameMatch[1] : `dokument_${templateType}.docx`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  window.URL.revokeObjectURL(url);
 }
 
 export async function apiGetChatHistory(projektId?: number): Promise<ChatMessage[]> {
@@ -76,6 +184,14 @@ export async function apiGetProjekti(params?: { faza?: string }) {
 export async function apiGetProjekt(id: number) {
   const data = await request<Record<string, unknown>>(`/projekti/${id}`);
   return parseProjekt(data);
+}
+
+export async function apiGetProjektFull(id: number): Promise<ProjektFull> {
+  const data = await request<Record<string, unknown>>(`/projekti/${id}/full`);
+  const projekt = parseProjekt(data.projekt as Record<string, unknown>);
+  const emaili = ((data.emaili as Record<string, unknown>[]) || []).map(parseEmail);
+  const casovnica = ((data.casovnica as Record<string, unknown>[]) || []).map(parseCasovnica);
+  return { projekt, emaili, casovnica };
 }
 
 // Emails
@@ -106,6 +222,7 @@ function parseChatMessage(data: Record<string, unknown>, defaultRole?: string): 
     needsConfirmation: (data.needs_confirmation as boolean) || false,
     actions: data.actions as ChatMessage["actions"],
     suggestedCommands: data.suggested_commands as string[] | undefined,
+    attachments: data.attachments as ChatAttachment[] | undefined,
   };
 }
 
@@ -120,6 +237,19 @@ function parseProjekt(data: Record<string, unknown>): Projekt {
     datumRfq: (data.datum_rfq as string) || "",
     datumZakljucka: data.datum_zakljucka as string | undefined,
     opombe: data.opombe as string | undefined,
+  };
+}
+
+function parseCasovnica(data: Record<string, unknown>): ProjektCasovnica {
+  return {
+    id: data.id as number,
+    projektId: data.projekt_id as number,
+    dogodek: (data.dogodek as string) || "",
+    opis: (data.opis as string) || "",
+    staraVrednost: data.stara_vrednost as string | undefined,
+    novaVrednost: data.nova_vrednost as string | undefined,
+    datum: (data.datum as string) || "",
+    uporabnikAliAgent: (data.uporabnik_ali_agent as string) || "",
   };
 }
 

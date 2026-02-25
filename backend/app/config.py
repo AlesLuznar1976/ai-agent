@@ -32,6 +32,7 @@ class Settings(BaseSettings):
     # Anthropic Claude (za pisanje skript)
     anthropic_api_key: Optional[str] = None
     anthropic_model: str = "claude-sonnet-4-5-20250929"
+    anthropic_vision_model: str = "claude-opus-4-6"
 
     # Microsoft Graph
     ms_graph_client_id: Optional[str] = None
@@ -49,6 +50,12 @@ class Settings(BaseSettings):
     # CalcuQuote
     calcuquote_api_key: Optional[str] = None
     calcuquote_url: str = "https://api.calcuquote.com/v1"
+
+    # SMB (share za projektne mape)
+    smb_server: str = "192.168.0.113"
+    smb_share: str = "izdelki"
+    smb_username: str = "ales"
+    smb_password: str = "Luznar1976"
 
     # Email sync
     email_sync_interval_minutes: int = 5

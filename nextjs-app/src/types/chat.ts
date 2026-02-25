@@ -1,3 +1,9 @@
+export interface ChatAttachment {
+  filename: string;
+  size: number;
+  mime_type: string;
+}
+
 export interface ChatMessage {
   role: "user" | "agent" | "system";
   content: string;
@@ -6,6 +12,7 @@ export interface ChatMessage {
   needsConfirmation?: boolean;
   actions?: ChatAction[];
   suggestedCommands?: string[];
+  attachments?: ChatAttachment[];
 }
 
 export interface ChatAction {

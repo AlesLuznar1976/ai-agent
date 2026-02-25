@@ -28,6 +28,7 @@ services:
     volumes:
       - ./data/documents:/app/documents
       - ./data/logs:/app/logs
+      - ./data/chat_uploads:/app/data/chat_uploads
     depends_on:
       - ollama
     deploy:
@@ -73,7 +74,9 @@ services:
     ports:
       - "9090:3000"
     environment:
-      - NEXT_PUBLIC_API_BASE_URL=http://192.168.0.66:8000/api
+      - BACKEND_URL=http://backend:8000
+    depends_on:
+      - backend
     restart: unless-stopped
     networks:
       - ai-agent-network

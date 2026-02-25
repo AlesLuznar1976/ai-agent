@@ -96,6 +96,9 @@ def _process_single_email(db: Session, db_email) -> None:
         uporabnik_ali_agent="agent",
     )
 
+    # Ustvari mapo na share
+    _create_project_folder(db, projekt, analiza)
+
     # WebSocket obvestilo
     _notify_new_project(projekt, db_email)
 
@@ -112,6 +115,38 @@ def _parse_json_field(value) -> dict | None:
         return json.loads(value)
     except (json.JSONDecodeError, TypeError):
         return None
+
+
+def _create_project_folder(db: Session, projekt, analiza: dict | None) -> None:
+    """Ustvari projektno mapo na SMB share (fire-and-forget)."""
+    try:
+        from app.services.smb_service import create_project_folder
+
+        # Izvleci podatke
+        stranka_ime = ""
+        izdelek_ime = ""
+        if analiza:
+            stranka = analiza.get("stranka") or {}
+            stranka_ime = stranka.get("ime") or ""
+            izdelki = analiza.get("izdelki") or []
+            if izdelki and isinstance(izdelki, list) and len(izdelki) > 0:
+                izdelek_ime = izdelki[0].get("naziv") or ""
+
+        if not stranka_ime:
+            stranka_ime = "NEZNANA_STRANKA"
+
+        folder_path = create_project_folder(stranka_ime, projekt.stevilka_projekta, izdelek_ime)
+
+        # Doda casovnica event
+        crud_projekti.add_casovnica_event(
+            db,
+            projekt_id=projekt.id,
+            dogodek="Mapa ustvarjena",
+            opis=f"Mapa ustvarjena: {folder_path}",
+            uporabnik_ali_agent="agent",
+        )
+    except Exception as e:
+        print(f"Agent processor SMB folder creation error: {e}")
 
 
 def _notify_new_project(projekt, db_email) -> None:

@@ -76,14 +76,19 @@ export default function EmailiPage() {
     });
   };
 
+  // Ignore emails before cutoff date for clean overview
+  const recentEmaili = useMemo(() => {
+    return vsiEmaili.filter((e) => e.datum && e.datum >= "2026-02-19");
+  }, [vsiEmaili]);
+
   // Filter by mailbox (non-admin sees only their mailbox)
   const mailboxFiltered = useMemo(() => {
-    if (isAdmin || !user?.mailbox) return vsiEmaili;
-    return vsiEmaili.filter((e) => {
+    if (isAdmin || !user?.mailbox) return recentEmaili;
+    return recentEmaili.filter((e) => {
       const m = (e.izvleceniPodatki?.mailbox as string) || "";
       return m === user.mailbox;
     });
-  }, [vsiEmaili, isAdmin, user?.mailbox]);
+  }, [recentEmaili, isAdmin, user?.mailbox]);
 
   // Apply status filter
   const statusFiltered = useMemo(() => {

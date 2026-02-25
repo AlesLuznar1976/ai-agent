@@ -1,3 +1,5 @@
+import { Email } from "./email";
+
 export interface Projekt {
   id: number;
   stevilkaProjekta: string;
@@ -19,4 +21,10 @@ export interface ProjektCasovnica {
   novaVrednost?: string;
   datum: string;
   uporabnikAliAgent: string;
+}
+
+export interface ProjektFull {
+  projekt: Projekt;
+  emaili: Email[];
+  casovnica: ProjektCasovnica[];
 }

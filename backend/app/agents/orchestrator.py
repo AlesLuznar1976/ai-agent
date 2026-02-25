@@ -302,6 +302,113 @@ class Orchestrator:
         return suggestions[:4]
 
 
+    async def process_with_files(
+        self,
+        message: str,
+        file_infos: list[dict],
+        user_id: int,
+        username: str,
+        user_role: str,
+        current_project_id: Optional[int] = None,
+    ) -> AgentResponse:
+        """
+        Procesira sporočilo z datotekami preko Claude Opus 4 (vision/document support).
+
+        file_infos: seznam dict-ov iz file_processor.process_uploaded_file()
+        """
+        import anthropic
+
+        if not settings.anthropic_api_key:
+            return AgentResponse(
+                message="Anthropic API ključ ni konfiguriran. Nastavi ANTHROPIC_API_KEY.",
+                suggested_commands=["Pomoč"],
+            )
+
+        now = datetime.now()
+
+        system_prompt = (
+            f"JEZIK: Odgovarjaj IZKLJUČNO v SLOVENŠČINI. NIKOLI ne odgovarjaj v angleščini.\n\n"
+            f"Si AI asistent za LUZNAR d.o.o. - podjetje za izdelavo elektronskih vezij (PCB, SMT montaža).\n"
+            f"Delaš z ERP sistemom LARGO. DANAŠNJI DATUM JE: {now.strftime('%Y-%m-%d')}.\n\n"
+            f"Uporabnik ti je poslal datoteke skupaj s sporočilom. Analiziraj datoteke in odgovori na zahtevo.\n"
+            f"Bodi natančen, konkreten in uporaben. Če je dokument v angleščini, vseeno odgovori v slovenščini.\n\n"
+            f"FORMATIRANJE ODGOVORA:\n"
+            f"- Uporabi Markdown za strukturiran, pregleden odgovor\n"
+            f"- Za podatke iz dokumentov uporabi **tabele** (| Stolpec | Stolpec |)\n"
+            f"- Uporabi **krepko pisavo** za ključne vrednosti in naslove\n"
+            f"- Uporabi ## naslove za razdelke (npr. ## Povzetek, ## Ključni podatki, ## Ugotovitve)\n"
+            f"- Za sezname uporabi - ali številčne sezname\n"
+            f"- Za slike PCB/elektronike: opiši komponente, oznake, stanje, morebitne napake\n"
+            f"- Za dokumente: izvleci ključne podatke strukturirano\n"
+            f"- Kratko in jedrnato, brez odvečnega besedila\n\n"
+            f"Kontekst:\n"
+            f"- Uporabnik: {username} (vloga: {user_role})\n"
+            f"- Aktiven projekt: {current_project_id or 'ni izbran'}\n"
+        )
+
+        # Zgradi content blocks za Claude Messages API
+        content_blocks: list[dict] = []
+
+        # Najprej slike in PDF-ji kot native content blocks
+        text_parts: list[str] = []
+
+        for fi in file_infos:
+            if fi["type"] in ("image", "document"):
+                content_blocks.append(fi["content_block"])
+            elif fi["type"] == "text":
+                text_parts.append(fi["text"])
+            elif fi["type"] == "unsupported":
+                text_parts.append(fi["text"])
+
+        # Dodaj ekstrahirane tekste kot en text block
+        if text_parts:
+            content_blocks.append({
+                "type": "text",
+                "text": "\n\n".join(text_parts),
+            })
+
+        # Uporabniško sporočilo vedno na koncu
+        if message:
+            content_blocks.append({
+                "type": "text",
+                "text": message,
+            })
+        elif not content_blocks:
+            content_blocks.append({
+                "type": "text",
+                "text": "Analiziraj priložene datoteke.",
+            })
+
+        try:
+            client = anthropic.AsyncAnthropic(api_key=settings.anthropic_api_key)
+            model = settings.anthropic_vision_model
+
+            logger.info(f"[ORCHESTRATOR] Calling Claude {model} with {len(content_blocks)} content blocks")
+
+            response = await client.messages.create(
+                model=model,
+                max_tokens=4096,
+                system=system_prompt,
+                messages=[{"role": "user", "content": content_blocks}],
+            )
+
+            response_text = response.content[0].text
+
+            logger.info(f"[ORCHESTRATOR] Claude response: {response_text[:200]}")
+
+            return AgentResponse(
+                message=response_text,
+                suggested_commands=self._suggest_commands(response_text),
+            )
+
+        except Exception as e:
+            logger.error(f"[ORCHESTRATOR] Claude API error: {e}")
+            return AgentResponse(
+                message=f"Napaka pri klicu Claude API: {str(e)}",
+                suggested_commands=["Pomoč"],
+            )
+
+
 # Singleton
 _orchestrator: Optional[Orchestrator] = None
 
